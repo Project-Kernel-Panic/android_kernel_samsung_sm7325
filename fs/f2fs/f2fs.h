@@ -123,6 +123,7 @@ extern const char *f2fs_fault_name[FAULT_MAX];
 #define F2FS_MOUNT_RESERVE_ROOT		0x01000000
 #define F2FS_MOUNT_DISABLE_CHECKPOINT	0x02000000
 #define F2FS_MOUNT_NORECOVERY		0x04000000
+#define F2FS_MOUNT_MERGE_CHECKPOINT	0x10000000
 
 #define F2FS_OPTION(sbi)	((sbi)->mount_opt)
 #define clear_opt(sbi, option)	(F2FS_OPTION(sbi).opt &= ~F2FS_MOUNT_##option)
@@ -1549,33 +1550,23 @@ struct f2fs_sec_blkops_dbg {
 #endif
 
 
-#define F2FS_SUPPORT_CHECKPOINT_CMD_TIME_NS
-
-struct checkpoint_cmd {
-	struct completion wait;
-	struct llist_node llnode;
-	int ret;
-	struct task_struct *owner;
-	unsigned long queue_time;		/* jiffies */
-	unsigned long dispatch_time;
-	unsigned long start_time;
-	unsigned long complete_time;
-#ifdef F2FS_SUPPORT_CHECKPOINT_CMD_TIME_NS
-	unsigned long long queue_time_ns;	/* sched_clock */
-	unsigned long long dispatch_time_ns;
-	unsigned long long start_time_ns;
-	unsigned long long complete_time_ns;
-#endif
+struct ckpt_req {
+	struct completion wait;		/* completion for checkpoint done */
+	struct llist_node llnode;	/* llist_node to be linked in wait queue */
+	int ret;			/* return code of checkpoint */
+	ktime_t queue_time;		/* request queued time */
 };
 
-struct f2fs_ckpt_cmd_control {
-	struct task_struct *ckpt_task;		/* issue checkpoint task */
+struct ckpt_req_control {
+	struct task_struct *f2fs_issue_ckpt;	/* checkpoint task */
 	wait_queue_head_t ckpt_wait_queue;	/* waiting queue for wake-up */
-	atomic_t issued_ckpt;			/* # of issued ckpts */
-	atomic_t issing_ckpt;			/* # of issing ckpts */
-	atomic_t accum_ckpt;			/* # of accum. issing ckpts */
-	struct llist_head issue_list;		/* list for command issue */
-	struct llist_node *dispatch_list;	/* list for command dispatch */
+	atomic_t issued_ckpt;		/* # of actually issued ckpts */
+	atomic_t total_ckpt;		/* # of total ckpts */
+	atomic_t queued_ckpt;		/* # of queued ckpts */
+	struct llist_head issue_list;	/* list for command issue */
+	spinlock_t stat_lock;		/* lock for below checkpoint time stats */
+	unsigned int cur_time;		/* cur wait time in msec for currently issued checkpoint */
+	unsigned int peak_time;		/* peak wait time in msec until now */
 };
 
 struct f2fs_sb_info {
@@ -1606,7 +1597,7 @@ struct f2fs_sb_info {
 	mempool_t *write_io_dummy;		/* Dummy pages */
 
 	/* for checkpoint */
-	struct f2fs_ckpt_cmd_control *ccc_info;	/* for checkpoint cmd control */
+	struct ckpt_req_control cprc_info;	/* for checkpoint request control */
 	struct f2fs_checkpoint *ckpt;		/* raw checkpoint pointer */
 	int cur_cp_pack;			/* remain current cp pack */
 	spinlock_t cp_lock;			/* for flag in ckpt */
@@ -3752,9 +3743,9 @@ void f2fs_init_ino_entry_info(struct f2fs_sb_info *sbi);
 int __init f2fs_create_checkpoint_caches(void);
 void f2fs_destroy_checkpoint_caches(void);
 int f2fs_issue_checkpoint(struct f2fs_sb_info *sbi);
-int f2fs_create_checkpoint_cmd_control(struct f2fs_sb_info *sbi);
-int f2fs_destroy_checkpoint_cmd_control(struct f2fs_sb_info *sbi, bool free);
-int f2fs_set_issue_ckpt_ioprio(struct f2fs_sb_info *sbi, unsigned int ioprio);
+int f2fs_start_ckpt_thread(struct f2fs_sb_info *sbi);
+void f2fs_stop_ckpt_thread(struct f2fs_sb_info *sbi);
+void f2fs_init_ckpt_req_control(struct f2fs_sb_info *sbi);
 
 /*
  * data.c
@@ -3868,6 +3859,8 @@ struct f2fs_stat_info {
 	int nr_discarding, nr_discarded;
 	int nr_discard_cmd;
 	unsigned int undiscard_blks;
+	int nr_issued_ckpt, nr_total_ckpt, nr_queued_ckpt;
+	unsigned int cur_ckpt_time, peak_ckpt_time;
 	int inline_xattr, inline_inode, inline_dir, append, update, orphans;
 	int compr_inode, compr_blocks;
 	int aw_cnt, max_aw_cnt, vw_cnt, max_vw_cnt;
