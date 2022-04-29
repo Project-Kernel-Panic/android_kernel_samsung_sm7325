@@ -148,6 +148,7 @@ static void __do_binderfs_test(void)
 	static const char * const binder_features[] = {
 		"oneway_spam_detection",
 		"freeze_notification",
+		"extended_error",
 	};
 
 	change_to_mountns();
