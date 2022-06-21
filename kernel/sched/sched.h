@@ -741,6 +741,10 @@ struct cfs_rq {
 	u64			throttled_clock;
 	u64			throttled_clock_pelt;
 	u64			throttled_clock_pelt_time;
+	u64			throttled_pelt_idle;
+#ifndef CONFIG_64BIT
+	u64			throttled_pelt_idle_copy;
+#endif
 	int			throttled;
 	int			throttle_count;
 	struct list_head	throttled_list;
@@ -1093,6 +1097,14 @@ struct rq {
 	/* Ensure that all clocks are in the same cache line */
 	u64			clock_task ____cacheline_aligned;
 	u64			clock_pelt;
+	u64			clock_idle;
+#ifndef CONFIG_64BIT
+	u64			clock_idle_copy;
+#endif
+	u64			clock_pelt_idle;
+#ifndef CONFIG_64BIT
+	u64			clock_pelt_idle_copy;
+#endif
 	unsigned long		lost_idle_time;
 
 	atomic_t		nr_iowait;
