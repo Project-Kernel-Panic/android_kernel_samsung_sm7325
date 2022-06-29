@@ -50,6 +50,8 @@ static inline void cfs_se_util_change(struct sched_avg *avg)
 	WRITE_ONCE(avg->util_est.enqueued, enqueued);
 }
 
+extern unsigned int sched_pelt_lshift;
+
 static inline u64 rq_clock_pelt(struct rq *rq)
 {
 	lockdep_assert_held(&rq->lock);
@@ -61,7 +63,7 @@ static inline u64 rq_clock_pelt(struct rq *rq)
 /* The rq is idle, we can sync to clock_task */
 static inline void _update_idle_rq_clock_pelt(struct rq *rq)
 {
-	rq->clock_pelt  = rq_clock_task(rq);
+	rq->clock_pelt  = rq_clock_task_mult(rq);
 
 	u64_u32_store(rq->clock_idle, rq_clock(rq));
 	/* Paired with smp_rmb in migrate_se_pelt_lag() */
@@ -83,6 +85,10 @@ static inline void _update_idle_rq_clock_pelt(struct rq *rq)
  */
 static inline void update_rq_clock_pelt(struct rq *rq, s64 delta)
 {
+	delta <<= READ_ONCE(sched_pelt_lshift);
+
+	per_cpu(clock_task_mult, rq->cpu) += delta;
+
 	if (unlikely(is_idle_task(rq->curr))) {
 		/* The rq is idle, we can sync to clock_task */
 		_update_idle_rq_clock_pelt(rq);
@@ -137,7 +143,7 @@ static inline void update_idle_rq_clock_pelt(struct rq *rq)
 	 * rq's clock_task.
 	 */
 	if (util_sum >= divider)
-		rq->lost_idle_time += rq_clock_task(rq) - rq->clock_pelt;
+		rq->lost_idle_time += rq_clock_task_mult(rq) - rq->clock_pelt;
 
 	_update_idle_rq_clock_pelt(rq);
 }
