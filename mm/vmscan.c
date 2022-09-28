@@ -3706,8 +3706,6 @@ static bool try_to_inc_max_seq(struct lruvec *lruvec, unsigned long max_seq,
 	if (wq_has_sleeper(&mm_list->nodes[nid].wait))
 		wake_up_all(&mm_list->nodes[nid].wait);
 
-	wakeup_flusher_threads(WB_REASON_VMSCAN);
-
 	return true;
 }
 
