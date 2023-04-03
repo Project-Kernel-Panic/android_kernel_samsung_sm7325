@@ -2639,8 +2639,10 @@ static int get_nr_gens(struct lruvec *lruvec, int type)
 
 static int get_swappiness(struct mem_cgroup *memcg)
 {
-	return mem_cgroup_get_nr_swap_pages(memcg) >= (long)SWAP_CLUSTER_MAX ?
-	       mem_cgroup_swappiness(memcg) : 0;
+	if (mem_cgroup_get_nr_swap_pages(memcg) <= 0)
+		return 0;
+
+	return mem_cgroup_swappiness(memcg);
 }
 
 static bool __maybe_unused seq_is_valid(struct lruvec *lruvec)
