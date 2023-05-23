@@ -3928,7 +3928,6 @@ static bool sort_page(struct page *page, struct lruvec *lruvec, struct scan_cont
 		page_inc_gen(page, lruvec, false);
 		WRITE_ONCE(lrugen->protected[hist][type][tier - 1],
 			   lrugen->protected[hist][type][tier - 1] + delta);
-		__mod_lruvec_state(lruvec, WORKINGSET_ACTIVATE, delta);
 		return true;
 	}
 
