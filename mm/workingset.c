@@ -287,6 +287,9 @@ void lru_gen_refault(struct page *page, void *shadow)
 	token >>= LRU_USAGE_WIDTH;
 	lruvec = mem_cgroup_lruvec(pgdat, memcg);
 	lrugen = &lruvec->evictable;
+
+	mod_lruvec_state(lruvec, WORKINGSET_REFAULT, delta);
+
 	min_seq = READ_ONCE(lrugen->min_seq[type]);
 	if (token != (min_seq & (EVICTION_MASK >> LRU_USAGE_WIDTH)))
 		goto unlock;
@@ -294,7 +297,7 @@ void lru_gen_refault(struct page *page, void *shadow)
 	hist = lru_hist_from_seq(min_seq);
 	tier = lru_tier_from_usage(usage + workingset);
 	atomic_long_add(delta, &lrugen->refaulted[hist][type][tier]);
-	mod_lruvec_state(lruvec, WORKINGSET_REFAULT, delta);
+	mod_lruvec_state(lruvec, WORKINGSET_ACTIVATE, delta);
 
 	/*
 	 * Tiers don't offer any protection to pages accessed via page tables.
