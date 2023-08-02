@@ -3630,7 +3630,7 @@ static void inc_max_seq(struct lruvec *lruvec, unsigned long max_seq)
 	int gen, type, zone;
 	struct lrugen *lrugen = &lruvec->evictable;
 	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
-
+restart:
 	spin_lock_irq(&pgdat->lru_lock);
 
 	VM_BUG_ON(!seq_is_valid(lruvec));
@@ -3642,11 +3642,12 @@ static void inc_max_seq(struct lruvec *lruvec, unsigned long max_seq)
 		if (try_to_inc_min_seq(lruvec, type))
 			continue;
 
-		while (!inc_min_seq(lruvec, type)) {
-			spin_unlock_irq(&pgdat->lru_lock);
-			cond_resched();
-			spin_lock_irq(&pgdat->lru_lock);
-		}
+		if (inc_min_seq(lruvec, type))
+			continue;
+
+		spin_unlock_irq(&pgdat->lru_lock);
+		cond_resched();
+		goto restart;
 	}
 
 	gen = lru_gen_from_seq(lrugen->max_seq - 1);
