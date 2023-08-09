@@ -3867,7 +3867,8 @@ void lru_gen_scan_around(struct page_vma_mapped_walk *pvmw)
  *                          the eviction
  ******************************************************************************/
 
-static bool sort_page(struct page *page, struct lruvec *lruvec, int tier_to_isolate)
+static bool sort_page(struct page *page, struct lruvec *lruvec, struct scan_control *sc,
+		      int tier_to_isolate)
 {
 	bool success;
 	int gen = page_lru_gen(page);
@@ -3879,6 +3880,12 @@ static bool sort_page(struct page *page, struct lruvec *lruvec, int tier_to_isol
 
 	VM_BUG_ON_PAGE(gen < 0, page);
 	VM_BUG_ON_PAGE(tier_to_isolate < 0, page);
+
+	/* ineligible */
+	if (skip_cma(page, sc)) {
+		page_inc_gen(page, lruvec, false);
+		return true;
+	}
 
 	/* an mlocked page? */
 	if (!page_evictable(page)) {
@@ -3986,7 +3993,7 @@ static int scan_pages(struct lruvec *lruvec, struct scan_control *sc, long *nr_t
 
 			scanned += delta;
 
-			if (sort_page(page, lruvec, tier))
+			if (sort_page(page, lruvec, sc, tier))
 				sorted += delta;
 			else if (isolate_page(page, lruvec, sc)) {
 				list_add(&page->lru, list);
