@@ -323,6 +323,7 @@ struct page_vma_mapped_walk;
  * corresponding generation. The counter in page->flags stores gen+1 while a
  * page is on one of the multigenerational lru lists. Otherwise, it stores 0.
  */
+#define MIN_NR_GENS		2U
 #define MAX_NR_GENS		((unsigned int)CONFIG_NR_LRU_GENS)
 
 /*
