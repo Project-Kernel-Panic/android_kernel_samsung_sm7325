@@ -4240,6 +4240,36 @@ static long get_nr_to_scan(struct lruvec *lruvec, struct scan_control *sc, int s
 	return try_to_inc_max_seq(lruvec, max_seq, sc, swappiness) ? nr_to_scan : 0;
 }
 
+static bool should_abort_scan(struct lruvec *lruvec, struct scan_control *sc)
+{
+	int i;
+	enum zone_watermarks mark;
+
+	/* don't abort memcg reclaim to ensure fairness */
+	if (!global_reclaim(sc))
+		return false;
+
+	if (sc->nr_reclaimed >= max(sc->nr_to_reclaim, compact_gap(sc->order)))
+		return true;
+
+	/* check the order to exclude compaction-induced reclaim */
+	if (!current_is_kswapd() || sc->order)
+		return false;
+
+	mark = WMARK_HIGH;
+
+	for (i = 0; i <= sc->reclaim_idx; i++) {
+		struct zone *zone = lruvec_pgdat(lruvec)->node_zones + i;
+		unsigned long size = wmark_pages(zone, mark) + SWAP_CLUSTER_MAX;
+
+		if (managed_zone(zone) && !zone_watermark_ok(zone, 0, size, sc->reclaim_idx, 0))
+			return false;
+	}
+
+	/* kswapd should abort if all eligible zones are safe */
+	return true;
+}
+
 static void lru_gen_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 {
 	struct blk_plug plug;
@@ -4265,6 +4295,9 @@ static void lru_gen_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc
 			break;
 
 		scanned -= nr_to_scan;
+
+		if (should_abort_scan(lruvec, sc))
+			break;
 
 		prot = mem_cgroup_protected(sc->target_mem_cgroup, memcg);
 		if (prot == MEMCG_PROT_MIN || (prot == MEMCG_PROT_LOW && !sc->memcg_low_reclaim))
