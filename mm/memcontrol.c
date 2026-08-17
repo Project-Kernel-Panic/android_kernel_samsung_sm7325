@@ -2520,7 +2520,6 @@ static unsigned long calculate_high_delay(struct mem_cgroup *memcg,
 void mem_cgroup_handle_over_high(void)
 {
 	unsigned long penalty_jiffies;
-	unsigned long pflags;
 	unsigned int nr_pages = current->memcg_nr_pages_over_high;
 	struct mem_cgroup *memcg;
 
@@ -2551,9 +2550,7 @@ void mem_cgroup_handle_over_high(void)
 	 * schedule_timeout_killable sets TASK_KILLABLE). This means we don't
 	 * need to account for any ill-begotten jiffies to pay them off later.
 	 */
-	psi_memstall_enter(&pflags);
 	schedule_timeout_killable(penalty_jiffies);
-	psi_memstall_leave(&pflags);
 
 out:
 	css_put(&memcg->css);
