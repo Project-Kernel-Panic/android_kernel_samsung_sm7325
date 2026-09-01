@@ -2652,12 +2652,6 @@ static int comp_params_store(struct zram *zram, u32 prio, s32 level,
 			up_write(&zram->init_lock);
 			return r;
 		}
-		if (sz_out == 0) {
-			pr_err("failed to load dictionary %s (empty file)\n",
-			       dict_path);
-			up_write(&zram->init_lock);
-			return -EINVAL;
-		}
 		sz = sz_out;
 	}
 
