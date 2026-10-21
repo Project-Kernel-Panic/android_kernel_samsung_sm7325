@@ -2228,8 +2228,8 @@ static void drain_stock(struct memcg_stock_pcp *stock)
 		stock->nr_pages = 0;
 	}
 
-	css_put(&old->css);
 	stock->cached = NULL;
+	css_put(&old->css);
 }
 
 static void drain_local_stock(struct work_struct *dummy)
