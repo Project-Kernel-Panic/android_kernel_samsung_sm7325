@@ -546,8 +546,6 @@ void set_pfnblock_flags_mask(struct page *page, unsigned long flags,
 	word_bitidx = bitidx / BITS_PER_LONG;
 	bitidx &= (BITS_PER_LONG-1);
 
-	VM_BUG_ON_PAGE(!zone_spans_pfn(page_zone(page), pfn), page);
-
 	bitidx += end_bitidx;
 	mask <<= (BITS_PER_LONG - bitidx - 1);
 	flags <<= (BITS_PER_LONG - bitidx - 1);
