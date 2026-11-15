@@ -3773,7 +3773,7 @@ static void sm5714_usbpd_debug_reg_log(struct work_struct *work)
 			data[11], data[12], data[13], data[14], data[15],
 			data[16], data[17],data[18], data[19]);
 
-	if (!pdic_data->suspended)
+	if (IS_ENABLED(CONFIG_SEC_FACTORY) && !pdic_data->suspended)
 		schedule_delayed_work(&pdic_data->debug_work,
 				msecs_to_jiffies(60000));
 }
@@ -3915,7 +3915,8 @@ static int sm5714_usbpd_probe(struct i2c_client *i2c,
 	INIT_DELAYED_WORK(&pdic_data->vbus_dischg_work,
 			sm5714_vbus_dischg_work);
 	INIT_DELAYED_WORK(&pdic_data->debug_work, sm5714_usbpd_debug_reg_log);
-	schedule_delayed_work(&pdic_data->debug_work, msecs_to_jiffies(10000));
+	if (IS_ENABLED(CONFIG_SEC_FACTORY))
+		schedule_delayed_work(&pdic_data->debug_work, msecs_to_jiffies(10000));
 
 #if IS_ENABLED(CONFIG_PDIC_NOTIFIER)
 	pdic_register_switch_device(1);
@@ -4107,7 +4108,8 @@ static int sm5714_usbpd_resume(struct device *dev)
 		sm5714_abnormal_dev_int_on_off(pdic_data, 1);
 		pdic_data->is_timer_expired = false;
 	}
-	schedule_delayed_work(&pdic_data->debug_work, msecs_to_jiffies(1500));
+	if (IS_ENABLED(CONFIG_SEC_FACTORY))
+		schedule_delayed_work(&pdic_data->debug_work, msecs_to_jiffies(1500));
 
 	return 0;
 }
