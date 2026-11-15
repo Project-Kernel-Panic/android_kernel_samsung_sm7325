@@ -1891,10 +1891,10 @@ static int sm5714_fg_get_property(struct power_supply *psy,
 	/* SOC (%) */
 	case POWER_SUPPLY_PROP_CAPACITY:
 		sm5714_update_all_value(fuelgauge);
-#if !defined(CONFIG_SEC_FACTORY)
+#if defined(CONFIG_SEC_DEBUG_FUELGAUGE_LOG)
 		/* for_debug */
 		sm5714_dump_all(fuelgauge);
-#else
+#elif defined(CONFIG_SEC_FACTORY)
 		sm5714_fuel_gauge_abnormal_reg_check(fuelgauge);
 #endif
 		/* SM5714 F/G unit is 0.1%, raw ==> convert the unit to 0.01% */
