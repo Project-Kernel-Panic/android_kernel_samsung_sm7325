@@ -19,15 +19,20 @@ void set_sensor_type(const int type_value, int *result)
 
 void enable_fp_debug_timer(struct debug_logger *logger)
 {
+#ifdef CONFIG_SEC_FACTORY
 	mod_timer(&logger->dbg_timer, round_jiffies_up(jiffies + DEBUG_TIMER_SEC));
+#endif
 }
 
 void disable_fp_debug_timer(struct debug_logger *logger)
 {
+#ifdef CONFIG_SEC_FACTORY
 	del_timer_sync(&logger->dbg_timer);
 	cancel_work_sync(&logger->work_debug);
+#endif
 }
 
+#ifdef CONFIG_SEC_FACTORY
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 14, 0)
 void timer_func(unsigned long ptr)
 #else
@@ -37,10 +42,14 @@ void timer_func(struct timer_list *t)
 	queue_work(g_logger->wq_dbg, &g_logger->work_debug);
 	enable_fp_debug_timer(g_logger);
 }
+#endif
 
 int set_fp_debug_timer(struct debug_logger *logger,
 					void (*func)(struct work_struct *work))
 {
+#ifndef CONFIG_SEC_FACTORY
+	return 0;
+#else
 	int rc = 0;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 14, 0)
 	setup_timer(&logger->dbg_timer, timer_func, 0);
@@ -56,6 +65,7 @@ int set_fp_debug_timer(struct debug_logger *logger,
 	INIT_WORK(&logger->work_debug, func);
 
 	return rc;
+#endif
 }
 
 void set_delay_in_spi_transfer(struct spi_transfer *xfer, unsigned int usec)
