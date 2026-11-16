@@ -76,7 +76,6 @@ static int zstd_setup_params(struct zcomp_params *params)
 	return 0;
 
 error:
-	zstd_release_params(params);
 	return -EINVAL;
 }
 
