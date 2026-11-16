@@ -1547,7 +1547,8 @@ exit:
 		biastimer_cancel();
 		cpu->bias = 0;
 	}
-	local_irq_enable();
+	if (!(drv->states[idx].flags & CPUIDLE_FLAG_TIMER_STOP))
+		local_irq_enable();
 	return idx;
 }
 
