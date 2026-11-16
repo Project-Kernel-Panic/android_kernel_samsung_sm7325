@@ -736,6 +736,12 @@ static ssize_t f2fs_sbi_show(struct f2fs_attr *a,
 	} else if (!strcmp(a->attr.name, "sec_stats")) {
 		return f2fs_sec_stats_show(sbi, buf);
 #endif
+	} else if (!strcmp(a->attr.name, "gc_urgent")) {
+		if (sbi->gc_mode == GC_URGENT_HIGH)
+			return snprintf(buf, PAGE_SIZE, "%d\n", 1);
+		if (sbi->gc_mode == GC_URGENT_LOW)
+			return snprintf(buf, PAGE_SIZE, "%d\n", 2);
+		return snprintf(buf, PAGE_SIZE, "%d\n", 0);
 	}
 
 	ui = (unsigned int *)(ptr + a->offset);
@@ -857,8 +863,18 @@ out:
 		return -EINVAL;
 
 	if (!strcmp(a->attr.name, "gc_urgent")) {
-		if (t >= 1) {
-			sbi->gc_mode = GC_URGENT;
+		if (t == 0) {
+			sbi->gc_mode = GC_NORMAL;
+		} else if (t == 1) {
+			sbi->gc_mode = GC_URGENT_HIGH;
+			if (sbi->gc_thread) {
+				sbi->gc_thread->gc_wake = 1;
+				wake_up_interruptible_all(
+					&sbi->gc_thread->gc_wait_queue_head);
+				wake_up_discard_thread(sbi, true);
+			}
+		} else if (t == 2) {
+			sbi->gc_mode = GC_URGENT_LOW;
 			if (sbi->gc_thread) {
 				sbi->gc_thread->gc_wake = 1;
 				wake_up_interruptible_all(
@@ -866,7 +882,7 @@ out:
 				wake_up_discard_thread(sbi, true);
 			}
 		} else {
-			sbi->gc_mode = GC_NORMAL;
+			return -EINVAL;
 		}
 		return count;
 	}
