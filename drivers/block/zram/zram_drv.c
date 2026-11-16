@@ -4305,6 +4305,7 @@ static int __init zram_init(void)
 		pr_err("Unable to get major number\n");
 		class_unregister(&zram_control_class);
 		cpuhp_remove_multi_state(CPUHP_ZCOMP_PREPARE);
+		zram_debugfs_destroy();
 		return -EBUSY;
 	}
 
