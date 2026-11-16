@@ -18,7 +18,7 @@
 #include "kgsl_trace.h"
 #include "kgsl_util.h"
 
-#define UPDATE_BUSY_VAL		1000000
+#define UPDATE_BUSY_VAL		500000
 
 #define KGSL_MAX_BUSLEVELS	20
 
