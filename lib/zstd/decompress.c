@@ -413,7 +413,7 @@ static size_t ZSTD_copyRawBlock(void *dst, size_t dstCapacity, const void *src, 
 {
 	if (srcSize > dstCapacity)
 		return ERROR(dstSize_tooSmall);
-	memcpy(dst, src, srcSize);
+	memmove(dst, src, srcSize);
 	return srcSize;
 }
 
