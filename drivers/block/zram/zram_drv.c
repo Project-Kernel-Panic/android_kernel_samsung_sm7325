@@ -362,11 +362,16 @@ static ssize_t idle_store(struct device *dev,
 		 */
 		u64 age_sec;
 
-		if (IS_ENABLED(CONFIG_ZRAM_MEMORY_TRACKING) && !kstrtoull(buf, 0, &age_sec))
-			cutoff_time = ktime_sub(ktime_get_boottime(),
-					ns_to_ktime(age_sec * NSEC_PER_SEC));
-		else
+		if (IS_ENABLED(CONFIG_ZRAM_MEMORY_TRACKING) && !kstrtoull(buf, 0, &age_sec)) {
+			time64_t uptime = ktime_get_boottime_seconds();
+
+			if (age_sec >= uptime)
+				return len;
+
+			cutoff_time = ns_to_ktime((uptime - age_sec) * NSEC_PER_SEC);
+		} else {
 			goto out;
+		}
 	}
 
 	down_read(&zram->init_lock);
