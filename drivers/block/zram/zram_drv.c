@@ -3822,6 +3822,10 @@ static void zram_destroy_comps(struct zram *zram)
 			continue;
 		zcomp_destroy(comp);
 		zram->num_active_comps--;
+#ifdef CONFIG_ZRAM_MULTI_COMP
+		if (prio > ZRAM_PRIMARY_COMP)
+			comp_algorithm_set(zram, prio, NULL);
+#endif
 	}
 }
 
