@@ -977,6 +977,9 @@ enum feat_id {
 	FEAT_VERITY,
 	FEAT_SB_CHECKSUM,
 	FEAT_CASEFOLD,
+#ifdef CONFIG_UNICODE
+	FEAT_LINEAR_LOOKUP,
+#endif
 	FEAT_COMPRESSION,
 	FEAT_RO,
 	FEAT_TEST_DUMMY_ENCRYPTION_V2,
@@ -1003,6 +1006,9 @@ static ssize_t f2fs_feature_show(struct f2fs_attr *a,
 	case FEAT_VERITY:
 	case FEAT_SB_CHECKSUM:
 	case FEAT_CASEFOLD:
+#ifdef CONFIG_UNICODE
+	case FEAT_LINEAR_LOOKUP:
+#endif
 	case FEAT_COMPRESSION:
 	case FEAT_RO:
 	case FEAT_TEST_DUMMY_ENCRYPTION_V2:
@@ -1155,6 +1161,7 @@ F2FS_FEATURE_RO_ATTR(verity, FEAT_VERITY);
 F2FS_FEATURE_RO_ATTR(sb_checksum, FEAT_SB_CHECKSUM);
 #ifdef CONFIG_UNICODE
 F2FS_FEATURE_RO_ATTR(casefold, FEAT_CASEFOLD);
+F2FS_FEATURE_RO_ATTR(linear_lookup, FEAT_LINEAR_LOOKUP);
 #endif
 F2FS_FEATURE_RO_ATTR(readonly, FEAT_RO);
 #ifdef CONFIG_F2FS_FS_COMPRESSION
@@ -1270,6 +1277,7 @@ static struct attribute *f2fs_feat_attrs[] = {
 	ATTR_LIST(sb_checksum),
 #ifdef CONFIG_UNICODE
 	ATTR_LIST(casefold),
+	ATTR_LIST(linear_lookup),
 #endif
 	ATTR_LIST(readonly),
 #ifdef CONFIG_F2FS_FS_COMPRESSION
