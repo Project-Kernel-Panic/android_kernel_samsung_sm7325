@@ -4471,7 +4471,7 @@ static ssize_t show_enable(struct kobject *kobj, struct kobj_attribute *attr, ch
 static ssize_t store_enable(struct kobject *kobj, struct kobj_attribute *attr,
 			    const char *buf, size_t len)
 {
-	int enable;
+	bool enable;
 
 	if (kstrtobool(buf, &enable))
 		return -EINVAL;
