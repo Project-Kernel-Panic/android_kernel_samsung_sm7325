@@ -48,7 +48,7 @@ static int zstd_setup_params(struct zcomp_params *params)
 		return -ENOMEM;
 
 	params->drv_data = zp;
-	if (params->level == ZCOMP_PARAM_NO_LEVEL)
+	if (params->level == ZCOMP_PARAM_NOT_SET)
 		params->level = zstd_default_clevel();
 
 	zp->cprm = ZSTD_getParams(params->level, PAGE_SIZE, 0);
