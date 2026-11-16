@@ -3101,10 +3101,6 @@ static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
 					       partial_io);
 	}
 
-	/* Should NEVER happen. Return bio error if it does. */
-	if (WARN_ON(ret < 0))
-		pr_err("Decompression failed! err=%d, page=%u\n", ret, index);
-
 	return ret;
 }
 
