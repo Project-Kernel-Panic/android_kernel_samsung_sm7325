@@ -135,11 +135,21 @@ ssize_t zcomp_available_show(const char *comp, char *buf)
 
 struct zcomp_cstrm *zcomp_cstrm_get(struct zcomp *comp)
 {
+	if (comp->recomp_cstream) {
+		spin_lock(&comp->recomp_lock);
+		return comp->recomp_cstream;
+	}
+
 	return *get_cpu_ptr(comp->cstream);
 }
 
 void zcomp_cstrm_put(struct zcomp *comp)
 {
+	if (comp->recomp_cstream) {
+		spin_unlock(&comp->recomp_lock);
+		return;
+	}
+
 	put_cpu_ptr(comp->cstream);
 }
 
@@ -190,24 +200,31 @@ int zcomp_decompress(struct zcomp_dstrm *zstrm,
 int zcomp_cpu_up_prepare(unsigned int cpu, struct hlist_node *node)
 {
 	struct zcomp *comp = hlist_entry(node, struct zcomp, node);
-	struct zcomp_cstrm *cstrm;
+	struct zcomp_cstrm *cstrm = NULL;
 	struct zcomp_dstrm *dstrm;
 
-	if (WARN_ON(*per_cpu_ptr(comp->cstream, cpu)))
-		return 0;
+	if (comp->cstream) {
+		if (WARN_ON(*per_cpu_ptr(comp->cstream, cpu)))
+			return 0;
 
-	cstrm = zcomp_cstrm_alloc(comp);
-	if (IS_ERR_OR_NULL(cstrm)) {
-		pr_err("Can't allocate a compression stream\n");
-		return -ENOMEM;
+		cstrm = zcomp_cstrm_alloc(comp);
+		if (IS_ERR_OR_NULL(cstrm)) {
+			pr_err("Can't allocate a compression stream\n");
+			return -ENOMEM;
+		}
+		*per_cpu_ptr(comp->cstream, cpu) = cstrm;
 	}
-	*per_cpu_ptr(comp->cstream, cpu) = cstrm;
+
+	if (WARN_ON(*per_cpu_ptr(comp->dstream, cpu)))
+		return 0;
 
 	dstrm = zcomp_dstrm_alloc(comp);
 	if (IS_ERR_OR_NULL(dstrm)) {
 		pr_err("Can't allocate a decompression stream\n");
-		zcomp_cstrm_free(cstrm);
-		*per_cpu_ptr(comp->cstream, cpu) = NULL;
+		if (cstrm) {
+			zcomp_cstrm_free(cstrm);
+			*per_cpu_ptr(comp->cstream, cpu) = NULL;
+		}
 		return -ENOMEM;
 	}
 	*per_cpu_ptr(comp->dstream, cpu) = dstrm;
@@ -220,10 +237,12 @@ int zcomp_cpu_dead(unsigned int cpu, struct hlist_node *node)
 	struct zcomp_cstrm *cstrm;
 	struct zcomp_dstrm *dstrm;
 
-	cstrm = *per_cpu_ptr(comp->cstream, cpu);
-	if (!IS_ERR_OR_NULL(cstrm))
-		zcomp_cstrm_free(cstrm);
-	*per_cpu_ptr(comp->cstream, cpu) = NULL;
+	if (comp->cstream) {
+		cstrm = *per_cpu_ptr(comp->cstream, cpu);
+		if (!IS_ERR_OR_NULL(cstrm))
+			zcomp_cstrm_free(cstrm);
+		*per_cpu_ptr(comp->cstream, cpu) = NULL;
+	}
 
 	dstrm = *per_cpu_ptr(comp->dstream, cpu);
 	if (!IS_ERR_OR_NULL(dstrm))
@@ -232,17 +251,27 @@ int zcomp_cpu_dead(unsigned int cpu, struct hlist_node *node)
 	return 0;
 }
 
-static int zcomp_init(struct zcomp *comp)
+static int zcomp_init(struct zcomp *comp, bool is_recomp)
 {
 	int ret;
 
-	comp->cstream = alloc_percpu(struct zcomp_cstrm *);
-	if (!comp->cstream)
-		return -ENOMEM;
+	if (is_recomp) {
+		spin_lock_init(&comp->recomp_lock);
+		comp->recomp_cstream = zcomp_cstrm_alloc(comp);
+		if (!comp->recomp_cstream)
+			return -ENOMEM;
+	} else {
+		comp->cstream = alloc_percpu(struct zcomp_cstrm *);
+		if (!comp->cstream)
+			return -ENOMEM;
+	}
 
 	comp->dstream = alloc_percpu(struct zcomp_dstrm *);
 	if (!comp->dstream) {
-		free_percpu(comp->cstream);
+		if (comp->cstream)
+			free_percpu(comp->cstream);
+		if (comp->recomp_cstream)
+			zcomp_cstrm_free(comp->recomp_cstream);
 		return -ENOMEM;
 	}
 
@@ -253,7 +282,10 @@ static int zcomp_init(struct zcomp *comp)
 
 cleanup:
 	free_percpu(comp->dstream);
-	free_percpu(comp->cstream);
+	if (comp->cstream)
+		free_percpu(comp->cstream);
+	if (comp->recomp_cstream)
+		zcomp_cstrm_free(comp->recomp_cstream);
 	return ret;
 }
 
@@ -261,7 +293,10 @@ void zcomp_destroy(struct zcomp *comp)
 {
 	cpuhp_state_remove_instance(CPUHP_ZCOMP_PREPARE, &comp->node);
 	free_percpu(comp->dstream);
-	free_percpu(comp->cstream);
+	if (comp->cstream)
+		free_percpu(comp->cstream);
+	if (comp->recomp_cstream)
+		zcomp_cstrm_free(comp->recomp_cstream);
 	kfree(comp);
 }
 
@@ -273,7 +308,7 @@ void zcomp_destroy(struct zcomp *comp)
  * case of allocation error, or any other error potentially
  * returned by zcomp_init().
  */
-struct zcomp *zcomp_create(const char *alg)
+struct zcomp *zcomp_create(const char *alg, bool is_recomp)
 {
 	struct zcomp *comp;
 	int error;
@@ -286,7 +321,7 @@ struct zcomp *zcomp_create(const char *alg)
 		return ERR_PTR(-ENOMEM);
 
 	comp->name = alg;
-	error = zcomp_init(comp);
+	error = zcomp_init(comp, is_recomp);
 	if (error) {
 		kfree(comp);
 		return ERR_PTR(error);
