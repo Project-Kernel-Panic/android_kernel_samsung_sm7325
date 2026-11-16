@@ -2243,6 +2243,7 @@ static void zram_handle_comp_page(struct work_struct *work)
 	u32 index;
 	u8 *src, *dst, *src_decomp;
 	bool spanned;
+	void *bounce = NULL;
 
 	if (zw->ppr) {
 		page_idx = blk_idx & ~ZWBS_ALIGN_MASK;
@@ -2276,7 +2277,8 @@ static void zram_handle_comp_page(struct work_struct *work)
 			copy_to_buf(dst, src_page, page_idx, offset + header_sz, size);
 			goto out_huge;
 		}
-		src = zstrm->tmpbuf;
+		bounce = kmalloc(size, GFP_NOWAIT | __GFP_NOWARN);
+		src = bounce ? bounce : zstrm->tmpbuf;
 		copy_to_buf(src, src_page, page_idx, offset + header_sz, size);
 		src_decomp = src;
 	} else {
@@ -2285,6 +2287,7 @@ static void zram_handle_comp_page(struct work_struct *work)
 	ret = zcomp_decompress(zstrm, src_decomp, size, dst);
 out_huge:
 	zcomp_dstrm_put(zram->comps[ZRAM_PRIMARY_COMP]);
+	kfree(bounce);
 	if (ret) {
 		struct hex_dump_pages hdp;
 
