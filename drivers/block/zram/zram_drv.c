@@ -3084,6 +3084,7 @@ static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
 	int ret;
 
 	zram_slot_lock(zram, index);
+	zram_accessed(zram, index);
 	if (!zram_test_flag(zram, index, ZRAM_WB)) {
 		/* Slot should be locked through out the function call */
 		ret = zram_read_from_zspool(zram, page, index);
@@ -3247,6 +3248,7 @@ out:
 	 * before overwriting unused sectors.
 	 */
 	zram_slot_lock(zram, index);
+	zram_accessed(zram, index);
 	zram_free_page(zram, index);
 
 	if (comp_len == PAGE_SIZE) {
@@ -3660,10 +3662,6 @@ static int zram_bvec_rw(struct zram *zram, struct bio_vec *bvec, u32 index,
 	}
 
 	generic_end_io_acct(q, op, &zram->disk->part0, start_time);
-
-	zram_slot_lock(zram, index);
-	zram_accessed(zram, index);
-	zram_slot_unlock(zram, index);
 
 	if (unlikely(ret < 0)) {
 		if (!op_is_write(op))
