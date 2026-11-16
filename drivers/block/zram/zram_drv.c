@@ -3873,6 +3873,8 @@ static void zram_destroy_comps(struct zram *zram)
 			comp_algorithm_set(zram, prio, NULL);
 #endif
 	}
+
+	comp_algorithm_set(zram, ZRAM_PRIMARY_COMP, default_compressor);
 }
 
 static void zram_reset_device(struct zram *zram)
@@ -3899,8 +3901,6 @@ static void zram_reset_device(struct zram *zram)
 	zram->wb_limit_enable = false;
 	zram->bd_wb_limit = 0;
 #endif
-
-	comp_algorithm_set(zram, ZRAM_PRIMARY_COMP, default_compressor);
 }
 
 static ssize_t disksize_store(struct device *dev,
