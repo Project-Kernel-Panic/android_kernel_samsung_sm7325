@@ -1395,11 +1395,7 @@ void sec_usb_thm_overheatlimit(struct sec_battery_info *battery)
 	int usb_temp = battery->usb_temp;
 
 	if (!use_usb_temp) {
-		if (battery->pdata->usb_thm_info.check_type < SEC_BATTERY_TEMP_CHECK_NONE ||
-		    battery->pdata->usb_thm_info.check_type > SEC_BATTERY_TEMP_CHECK_FAKE) {
-			pr_err("%s: USB_THM, Invalid Temp Check Type (%d), usb_thm <- bat_thm\n",
-			       __func__, battery->pdata->usb_thm_info.check_type);
-		}
+		pr_err("%s: USB_THM, Invalid Temp Check Type, usb_thm <- bat_thm\n", __func__);
 		battery->usb_temp = battery->temperature;
 		usb_temp = battery->temperature;
 	}

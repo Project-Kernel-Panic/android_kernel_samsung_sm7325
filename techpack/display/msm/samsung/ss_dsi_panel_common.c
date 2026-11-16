@@ -6604,16 +6604,27 @@ int ss_brightness_dcs(struct samsung_display_driver_data *vdd, int level, int ba
 		goto skip_bl_update;
 	}
 
-	if (ss_is_panel_lpm(vdd)) {
-		if (vdd->panel_lpm.is_support && is_new_lpm_version(vdd)) {
-			set_lpm_br_values(vdd);
-			LCD_INFO(vdd, "[Panel LPM]: set brightness.(%d level)->(%d cd)\n",
-				 vdd->br_info.common_br.bl_level, vdd->panel_lpm.lpm_bl_level);
+	if (vdd->panel_lpm.is_support && is_new_lpm_version(vdd)) {
+		set_lpm_br_values(vdd);
+
+		if (ss_is_panel_lpm(vdd)) {
+			LCD_INFO(vdd, "[Panel LPM]: set brightness.(%d level)->(%d cd)\n", vdd->br_info.common_br.bl_level, vdd->panel_lpm.lpm_bl_level);
 
 			if (vdd->panel_func.samsung_set_lpm_brightness)
 				vdd->panel_func.samsung_set_lpm_brightness(vdd);
+			goto skip_bl_update;
 		}
-		/* Skip physical DCS brightness update during LPM to prevent false ESD detection */
+	}
+
+	if (!is_new_lpm_version(vdd) && ss_is_panel_lpm(vdd)) {
+		LCD_ERR(vdd, "error: AOD service didn't set proper LPM mode " \
+			"before enter LPM. bl: %d, lpm_bl: %d, lpm_mode: %d, ver: %d\n",
+				vdd->br_info.common_br.bl_level,
+				vdd->panel_lpm.lpm_bl_level,
+				vdd->panel_lpm.mode,
+				vdd->panel_lpm.ver);
+
+		LCD_ERR(vdd, "ver: %d, skip brightness setting to prevent false ESD detection\n", vdd->panel_lpm.ver);
 		goto skip_bl_update;
 	}
 

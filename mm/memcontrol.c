@@ -1308,12 +1308,8 @@ void mem_cgroup_update_lru_size(struct lruvec *lruvec, enum lru_list lru,
 	mz = container_of(lruvec, struct mem_cgroup_per_node, lruvec);
 	lru_size = &mz->lru_zone_size[zid][lru];
 
-	if (nr_pages < 0) {
-		if (*lru_size < (unsigned long)(-nr_pages))
-			*lru_size = 0;
-		else
-			*lru_size += nr_pages;
-	}
+	if (nr_pages < 0)
+		*lru_size += nr_pages;
 
 	size = *lru_size;
 	if (WARN_ONCE(size < 0,
@@ -4074,7 +4070,7 @@ static int mem_cgroup_swappiness_write(struct cgroup_subsys_state *css,
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
 
-	if (val > 200)
+	if (val > 100)
 		return -EINVAL;
 
 	if (css->parent)

@@ -2053,7 +2053,7 @@ static void sm5714_muic_debug_reg_log(struct work_struct *work)
 			MUIC_DEV_NAME, __func__, data[11], data[12], data[13],
 			data[14], data[15], data[16], data[17]);
 
-	if (IS_ENABLED(CONFIG_SEC_FACTORY) && !muic_data->suspended)
+	if (!muic_data->suspended)
 		schedule_delayed_work(&muic_data->muic_debug_work,
 				msecs_to_jiffies(60000));
 }
@@ -2413,8 +2413,7 @@ static int sm5714_muic_probe(struct platform_device *pdev)
 	INIT_WORK(&(muic_data->muic_event_work), sm5714_muic_handle_event);
 	INIT_DELAYED_WORK(&muic_data->muic_debug_work,
 						sm5714_muic_debug_reg_log);
-	if (IS_ENABLED(CONFIG_SEC_FACTORY))
-		schedule_delayed_work(&muic_data->muic_debug_work,
+	schedule_delayed_work(&muic_data->muic_debug_work,
 						msecs_to_jiffies(10000));
 
 	INIT_DELAYED_WORK(&muic_data->delayed_523Kto619K_work, sm5714_muic_delayed_523Kto619K_work);
@@ -2562,8 +2561,7 @@ static int sm5714_muic_resume(struct device *dev)
 					muic_data->attached_dev);
 		muic_data->need_to_noti = false;
 	}
-	if (IS_ENABLED(CONFIG_SEC_FACTORY))
-		schedule_delayed_work(&muic_data->muic_debug_work,
+	schedule_delayed_work(&muic_data->muic_debug_work,
 							msecs_to_jiffies(1500));
 
 	return 0;
