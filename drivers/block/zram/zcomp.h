@@ -1,32 +1,67 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-/*
- * Copyright (C) 2014 Sergey Senozhatsky.
- */
 
 #ifndef _ZCOMP_H_
 #define _ZCOMP_H_
 
-#include <linux/spinlock.h>
+#define ZCOMP_PARAM_NO_LEVEL	INT_MIN
 
-struct zcomp_cstrm {
-	/* compression buffer */
-	void *buffer;
-	struct crypto_comp *tfm;
+/*
+ * Immutable driver (backend) parameters. The driver may attach private
+ * data to it (e.g. driver representation of the dictionary, etc.).
+ *
+ * This data is kept per-comp and is shared among execution contexts.
+ */
+struct zcomp_params {
+	void *dict;
+	size_t dict_sz;
+	s32 level;
+
+	void *drv_data;
 };
 
-struct zcomp_dstrm {
-	/* decompression buffer / local copy for spanned read */
-	void *tmpbuf;
-	struct crypto_comp *tfm;
+/*
+ * Run-time driver context - scratch buffers, etc. It is modified during
+ * request execution (compression/decompression), cannot be shared, so
+ * it's in per-CPU area.
+ */
+struct zcomp_ctx {
+	void *context;
+};
+
+struct zcomp_strm {
+	/* compression buffer */
+	void *buffer;
+	struct zcomp_ctx ctx;
+};
+
+struct zcomp_req {
+	const unsigned char *src;
+	const size_t src_len;
+
+	unsigned char *dst;
+	size_t dst_len;
+};
+
+struct zcomp_ops {
+	int (*compress)(struct zcomp_params *params, struct zcomp_ctx *ctx,
+			struct zcomp_req *req);
+	int (*decompress)(struct zcomp_params *params, struct zcomp_ctx *ctx,
+			  struct zcomp_req *req);
+
+	int (*create_ctx)(struct zcomp_params *params, struct zcomp_ctx *ctx);
+	void (*destroy_ctx)(struct zcomp_ctx *ctx);
+
+	int (*setup_params)(struct zcomp_params *params);
+	void (*release_params)(struct zcomp_params *params);
+
+	const char *name;
 };
 
 /* dynamic per-device compression frontend */
 struct zcomp {
-	struct zcomp_cstrm * __percpu *cstream;
-	struct zcomp_cstrm *recomp_cstream;
-	spinlock_t recomp_lock;
-	struct zcomp_dstrm * __percpu *dstream;
-	const char *name;
+	struct zcomp_strm * __percpu *stream;
+	const struct zcomp_ops *ops;
+	struct zcomp_params *params;
 	struct hlist_node node;
 };
 
@@ -35,20 +70,15 @@ int zcomp_cpu_dead(unsigned int cpu, struct hlist_node *node);
 ssize_t zcomp_available_show(const char *comp, char *buf);
 bool zcomp_available_algorithm(const char *comp);
 
-struct zcomp *zcomp_create(const char *alg, bool is_recomp);
+struct zcomp *zcomp_create(const char *alg, struct zcomp_params *params);
 void zcomp_destroy(struct zcomp *comp);
 
-struct zcomp_cstrm *zcomp_cstrm_get(struct zcomp *comp);
-void zcomp_cstrm_put(struct zcomp *comp);
+struct zcomp_strm *zcomp_stream_get(struct zcomp *comp);
+void zcomp_stream_put(struct zcomp *comp);
 
-struct zcomp_dstrm *zcomp_dstrm_get(struct zcomp *comp);
-void zcomp_dstrm_put(struct zcomp *comp);
+int zcomp_compress(struct zcomp *comp, struct zcomp_strm *zstrm,
+		   const void *src, unsigned int *dst_len);
+int zcomp_decompress(struct zcomp *comp, struct zcomp_strm *zstrm,
+		     const void *src, unsigned int src_len, void *dst);
 
-int zcomp_compress(struct zcomp_cstrm *zstrm,
-		const void *src, unsigned int *dst_len);
-
-int zcomp_decompress(struct zcomp_dstrm *zstrm,
-		const void *src, unsigned int src_len, void *dst);
-
-bool zcomp_set_max_streams(struct zcomp *comp, int num_strm);
 #endif /* _ZCOMP_H_ */
