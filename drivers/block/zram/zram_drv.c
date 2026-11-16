@@ -3183,7 +3183,7 @@ compress_again:
 	 * if we have a 'non-null' handle here then we are coming
 	 * from the slow path and handle has already been allocated.
 	 */
-	if (!handle)
+	if (!handle || IS_ERR_VALUE(handle))
 		handle = zs_malloc(zram->mem_pool, comp_len,
 				__GFP_KSWAPD_RECLAIM |
 				__GFP_NOWARN |
@@ -3194,7 +3194,7 @@ compress_again:
 				| __GFP_OFFLINABLE
 #endif
 				);
-	if (!handle) {
+	if (!handle || IS_ERR_VALUE(handle)) {
 		zcomp_stream_put(zram->comps[ZRAM_PRIMARY_COMP]);
 		atomic64_inc(&zram->stats.writestall);
 		handle = zs_malloc(zram->mem_pool, comp_len,
@@ -3204,7 +3204,7 @@ compress_again:
 				| __GFP_OFFLINABLE
 #endif
 				);
-		if (handle)
+		if (handle && !IS_ERR_VALUE(handle))
 			goto compress_again;
 		return -ENOMEM;
 	}
@@ -3417,9 +3417,9 @@ static int zram_recompress(struct zram *zram, u32 index, struct page *page,
 			       __GFP_NOWARN |
 			       __GFP_HIGHMEM |
 			       __GFP_MOVABLE);
-	if (IS_ERR_VALUE(handle_new)) {
+	if (!handle_new || IS_ERR_VALUE(handle_new)) {
 		zcomp_stream_put(zram->comps[prio]);
-		return PTR_ERR((void *)handle_new);
+		return handle_new ? PTR_ERR((void *)handle_new) : -ENOMEM;
 	}
 
 	dst = zs_map_object(zram->mem_pool, handle_new, ZS_MM_WO);
