@@ -189,6 +189,8 @@ void forced_shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 			      int type, unsigned long nr_requested);
 #endif
 
+struct lru_gen_mm_list;
+
 /*
  * Remember four most recent foreign writebacks with dirty pages in this
  * cgroup.  Inode sharing is expected to be uncommon and, even if we miss
@@ -339,6 +341,10 @@ struct mem_cgroup {
 
 #if defined(CONFIG_TRANSPARENT_HUGEPAGE) || defined(CONFIG_GKI_OPT_FEATURES)
 	struct deferred_split deferred_split_queue;
+#endif
+
+#ifdef CONFIG_LRU_GEN
+	struct lru_gen_mm_list *mm_list;
 #endif
 
 	struct mem_cgroup_per_node *nodeinfo[0];
