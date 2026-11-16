@@ -477,6 +477,14 @@ int sched_updown_migrate_handler(struct ctl_table *table, int write,
 	}
 
 	for (i = 0; i < cap_margin_levels; i++) {
+		if (data == &sysctl_sched_capacity_margin_up[0]) {
+			if (sysctl_sched_capacity_margin_up[i] < 1204)
+				sysctl_sched_capacity_margin_up[i] = 1204;
+		} else if (data == &sysctl_sched_capacity_margin_down[0]) {
+			if (sysctl_sched_capacity_margin_down[i] < 1462)
+				sysctl_sched_capacity_margin_down[i] = 1462;
+		}
+
 		if (sysctl_sched_capacity_margin_up[i] >
 				sysctl_sched_capacity_margin_down[i]) {
 			memcpy(data, old_val, table->maxlen);
