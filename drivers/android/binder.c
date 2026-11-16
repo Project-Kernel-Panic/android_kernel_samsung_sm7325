@@ -553,6 +553,7 @@ static void binder_wakeup_poll_threads_ilocked(struct binder_proc *proc,
 				wake_up_interruptible_sync(&thread->wait);
 			else
 				wake_up_interruptible(&thread->wait);
+			break;
 		}
 	}
 }
