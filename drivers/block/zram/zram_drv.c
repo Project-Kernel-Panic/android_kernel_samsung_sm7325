@@ -1872,7 +1872,7 @@ static ssize_t writeback_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t len)
 {
 	struct zram *zram = dev_to_zram(dev);
-	unsigned long nr_pages = zram->disksize >> PAGE_SHIFT;
+	unsigned long nr_pages;
 	unsigned long index;
 	struct bio bio;
 	struct bio_vec bio_vec;
@@ -1902,6 +1902,8 @@ static ssize_t writeback_store(struct device *dev,
 		ret = -ENODEV;
 		goto release_init_lock;
 	}
+
+	nr_pages = zram->disksize >> PAGE_SHIFT;
 
 	page = alloc_page(GFP_KERNEL);
 	if (!page) {
