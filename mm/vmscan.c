@@ -2823,6 +2823,14 @@ out:
 			BUG();
 		}
 
+		/*
+		 * Do not scan active anon pages if the inactive list is
+		 * large enough to satisfy memory pressure.
+		 */
+		if (lru == LRU_ACTIVE_ANON &&
+		    !inactive_list_is_low(lruvec, false, sc, false))
+			scan = 0;
+
 		*lru_pages += lruvec_size;
 		nr[lru] = scan;
 	}
