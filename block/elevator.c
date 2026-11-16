@@ -629,10 +629,14 @@ static inline bool elv_support_iosched(struct request_queue *q)
  */
 static struct elevator_type *elevator_get_default(struct request_queue *q)
 {
+#ifdef CONFIG_MQ_IOSCHED_DEFAULT_ADIOS
+	return elevator_get(q, "adios", false);
+#else
 	if (q->nr_hw_queues != 1)
 		return NULL;
 
 	return elevator_get(q, "mq-deadline", false);
+#endif
 }
 
 /*
