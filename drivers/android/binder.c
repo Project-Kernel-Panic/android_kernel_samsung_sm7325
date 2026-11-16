@@ -2937,7 +2937,27 @@ static int binder_proc_transaction(struct binder_transaction *t,
 		binder_transaction_priority(thread, t, node);
 		binder_enqueue_thread_work_ilocked(thread, &t->work);
 	} else if (!pending_async) {
-		binder_enqueue_work_ilocked(&t->work, &proc->todo);
+		if (!oneway) {
+			struct binder_work *w;
+			struct list_head *pos = &proc->todo;
+
+			list_for_each_entry(w, &proc->todo, entry) {
+				if (w->type == BINDER_WORK_TRANSACTION) {
+					struct binder_transaction *t_iter =
+						container_of(w, struct binder_transaction, work);
+					if (t_iter->flags & TF_ONE_WAY) {
+						pos = &w->entry;
+						break;
+					}
+				}
+			}
+			if (pos != &proc->todo)
+				list_add_tail(&t->work.entry, pos);
+			else
+				binder_enqueue_work_ilocked(&t->work, &proc->todo);
+		} else {
+			binder_enqueue_work_ilocked(&t->work, &proc->todo);
+		}
 	} else {
 		if ((t->flags & TF_UPDATE_TXN) && proc->is_frozen) {
 			t_outdated = binder_find_outdated_transaction_ilocked(t,
