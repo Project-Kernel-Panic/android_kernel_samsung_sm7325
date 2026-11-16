@@ -1876,7 +1876,7 @@ static ssize_t writeback_store(struct device *dev,
 	unsigned long index;
 	struct bio bio;
 	struct bio_vec bio_vec;
-	struct page *page;
+	struct page *page = NULL;
 	ssize_t ret = len;
 	int mode, err;
 	unsigned long blk_idx = 0;
@@ -2049,8 +2049,10 @@ next:
 #else
 		free_block_bdev(zram, blk_idx);
 #endif
-	__free_page(page);
+
 release_init_lock:
+	if (page)
+		__free_page(page);
 	up_read(&zram->init_lock);
 
 	return ret;
