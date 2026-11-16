@@ -826,7 +826,7 @@ static void remove_request(struct adios_data *ad, struct request *rq) {
 	list_del_init(&rq->queuelist);
 
 	// We might not be on the rbtree, if we are doing an insert merge
-	if (rd->dl_group)
+	if (rd && rd->dl_group)
 		del_from_dl_tree(ad, dl_idx, rq);
 
 	elv_rqhash_del(q, rq);
@@ -869,9 +869,14 @@ static void adios_depth_updated(struct blk_mq_hw_ctx *hctx) {
 // Handle request merging after a merge operation
 static void adios_request_merged(struct request_queue *q, struct request *req,
 				  enum elv_merge type) {
-	bool dl_idx = adios_optype_not_read(req);
+	struct adios_rq_data *rd = get_rq_data(req);
 	struct adios_data *ad = q->elevator->elevator_data;
+	bool dl_idx;
 
+	if (!rd || !rd->dl_group)
+		return;
+
+	dl_idx = adios_optype_not_read(req);
 	// Reposition request in the deadline-sorted tree
 	del_from_dl_tree(ad, dl_idx, req);
 	add_to_dl_tree(ad, dl_idx, req);
@@ -954,7 +959,13 @@ static void insert_request_post_stability(struct blk_mq_hw_ctx *hctx,
 	struct request_queue *q = hctx->queue;
 	struct adios_data *ad = q->elevator->elevator_data;
 	struct adios_rq_data *rd = get_rq_data(rq);
-	u8 optype = adios_optype(rq);
+	u8 optype;
+
+	if (unlikely(!rd)) {
+		blk_mq_request_bypass_insert(rq, insert_flags & BLK_MQ_INSERT_AT_HEAD, false);
+		return;
+	}
+	optype = adios_optype(rq);
 
 	rd->managed = true;
 	rd->block_size = blk_rq_bytes(rq);
@@ -978,9 +989,16 @@ static void insert_request_pre_stability(struct blk_mq_hw_ctx *hctx,
 		struct request *rq, blk_insert_t insert_flags, struct list_head *free) {
 	struct adios_data *ad = hctx->queue->elevator->elevator_data;
 	struct adios_rq_data *rd = get_rq_data(rq);
-	u8 optype = adios_optype(rq);
-	u8 pq_idx = !(insert_flags & BLK_MQ_INSERT_AT_HEAD);
+	u8 optype;
+	u8 pq_idx;
 	bool stable = false;
+
+	if (unlikely(!rd)) {
+		blk_mq_request_bypass_insert(rq, insert_flags & BLK_MQ_INSERT_AT_HEAD, false);
+		return;
+	}
+	optype = adios_optype(rq);
+	pq_idx = !(insert_flags & BLK_MQ_INSERT_AT_HEAD);
 
 	rd->managed = true;
 	rd->block_size = blk_rq_bytes(rq);
@@ -1023,6 +1041,10 @@ static void adios_insert_requests(struct blk_mq_hw_ctx *hctx,
 			}
 			rq = list_first_entry(list, struct request, queuelist);
 			list_del_init(&rq->queuelist);
+			if (unlikely(!get_rq_data(rq))) {
+				blk_mq_request_bypass_insert(rq, at_head, false);
+				continue;
+			}
 			if (likely(ad->models_stable))
 				insert_request_post_stability(hctx, rq, insert_flags, &free);
 			else
@@ -1040,6 +1062,10 @@ static void adios_prepare_request(struct request *rq, struct bio *bio) {
 	struct adios_rq_data *rd;
 
 	rd = mempool_alloc(ad->rq_data_pool, GFP_ATOMIC);
+	if (!rd) {
+		rq->elv.priv[0] = NULL;
+		return;
+	}
 	memset(rd, 0, sizeof(*rd));
 	rd->rq = rq;
 	rq->elv.priv[0] = rd;
@@ -1395,6 +1421,9 @@ static void adios_completed_request(struct request *rq, u64 now) {
 	u32 weight;
 	sector_t current_pos;
 	u64 seek_distance;
+
+	if (!rd)
+		return;
 
 	if (rd->managed) {
 		union adios_in_flight_rqs ifr_to_sub = {
