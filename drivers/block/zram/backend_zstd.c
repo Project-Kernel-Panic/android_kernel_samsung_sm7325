@@ -12,6 +12,12 @@
 #ifndef zstd_default_clevel
 #define zstd_default_clevel() 3
 #endif
+#ifndef zstd_min_clevel
+#define zstd_min_clevel() 1
+#endif
+#ifndef zstd_max_clevel
+#define zstd_max_clevel() ZSTD_maxCLevel()
+#endif
 
 struct zstd_ctx {
 	ZSTD_CCtx *cctx;
@@ -50,8 +56,13 @@ static int zstd_setup_params(struct zcomp_params *params)
 		return -ENOMEM;
 
 	params->drv_data = zp;
-	if (params->level == ZCOMP_PARAM_NOT_SET)
+	if (params->level == ZCOMP_PARAM_NOT_SET) {
 		params->level = zstd_default_clevel();
+	} else if (params->level < zstd_min_clevel() ||
+		   params->level > zstd_max_clevel()) {
+		pr_err("invalid compression level %d\n", params->level);
+		goto error;
+	}
 
 	zp->cprm = ZSTD_getParams(params->level, PAGE_SIZE, 0);
 
