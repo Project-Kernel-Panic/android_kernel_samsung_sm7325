@@ -6,6 +6,8 @@
 #ifndef _ZCOMP_H_
 #define _ZCOMP_H_
 
+#include <linux/spinlock.h>
+
 struct zcomp_cstrm {
 	/* compression buffer */
 	void *buffer;
@@ -21,6 +23,8 @@ struct zcomp_dstrm {
 /* dynamic per-device compression frontend */
 struct zcomp {
 	struct zcomp_cstrm * __percpu *cstream;
+	struct zcomp_cstrm *recomp_cstream;
+	spinlock_t recomp_lock;
 	struct zcomp_dstrm * __percpu *dstream;
 	const char *name;
 	struct hlist_node node;
@@ -31,7 +35,7 @@ int zcomp_cpu_dead(unsigned int cpu, struct hlist_node *node);
 ssize_t zcomp_available_show(const char *comp, char *buf);
 bool zcomp_available_algorithm(const char *comp);
 
-struct zcomp *zcomp_create(const char *alg);
+struct zcomp *zcomp_create(const char *alg, bool is_recomp);
 void zcomp_destroy(struct zcomp *comp);
 
 struct zcomp_cstrm *zcomp_cstrm_get(struct zcomp *comp);
