@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-/*
- * Copyright (C) 2014 Sergey Senozhatsky.
- */
 
 #include <linux/kernel.h>
 #include <linux/string.h>
@@ -10,318 +7,240 @@
 #include <linux/wait.h>
 #include <linux/sched.h>
 #include <linux/cpu.h>
-#include <linux/crypto.h>
+#include <linux/vmalloc.h>
 
 #include "zcomp.h"
 
-static const char * const backends[] = {
-	"lzo",
-	"lzo-rle",
-#if IS_ENABLED(CONFIG_CRYPTO_LZ4)
-	"lz4",
+#include "backend_lzo.h"
+#include "backend_lzorle.h"
+#include "backend_lz4.h"
+#include "backend_lz4hc.h"
+#include "backend_zstd.h"
+#include "backend_deflate.h"
+#include "backend_842.h"
+
+static const struct zcomp_ops *backends[] = {
+#if IS_ENABLED(CONFIG_LZO_COMPRESS)
+	&backend_lzorle,
+	&backend_lzo,
 #endif
-#if IS_ENABLED(CONFIG_CRYPTO_LZ4HC)
-	"lz4hc",
+#if IS_ENABLED(CONFIG_LZ4_COMPRESS)
+	&backend_lz4,
 #endif
-#if IS_ENABLED(CONFIG_CRYPTO_842)
-	"842",
+#if IS_ENABLED(CONFIG_LZ4HC_COMPRESS)
+	&backend_lz4hc,
 #endif
-#if IS_ENABLED(CONFIG_CRYPTO_ZSTD)
-	"zstd",
+#if IS_ENABLED(CONFIG_ZSTD_COMPRESS)
+	&backend_zstd,
+#endif
+#if IS_ENABLED(CONFIG_ZLIB_DEFLATE)
+	&backend_deflate,
+#endif
+#if IS_ENABLED(CONFIG_842_COMPRESS)
+	&backend_842,
 #endif
 	NULL
 };
 
-static void zcomp_cstrm_free(struct zcomp_cstrm *cstrm)
+static void zcomp_strm_free(struct zcomp *comp, struct zcomp_strm *zstrm)
 {
-	if (!IS_ERR_OR_NULL(cstrm->tfm))
-		crypto_free_comp(cstrm->tfm);
-	if (cstrm->buffer)
-		free_pages((unsigned long)cstrm->buffer, 1);
-	kfree(cstrm);
+	if (!zstrm)
+		return;
+	if (comp->ops && comp->ops->destroy_ctx)
+		comp->ops->destroy_ctx(&zstrm->ctx);
+	vfree(zstrm->buffer);
+	zstrm->buffer = NULL;
 }
 
-static struct zcomp_cstrm *zcomp_cstrm_alloc(struct zcomp *comp)
+static int zcomp_strm_init(struct zcomp *comp, struct zcomp_strm *zstrm)
 {
-	struct zcomp_cstrm *cstrm = kmalloc(sizeof(*cstrm), GFP_KERNEL);
-	if (!cstrm)
-		return NULL;
+	int ret;
 
-	cstrm->tfm = crypto_alloc_comp(comp->name, 0, 0);
+	ret = comp->ops->create_ctx(comp->params, &zstrm->ctx);
+	if (ret)
+		return ret;
+
 	/*
 	 * allocate 2 pages. 1 for compressed data, plus 1 extra for the
 	 * case when compressed size is larger than the original one
 	 */
-	cstrm->buffer = (void *)__get_free_pages(GFP_KERNEL | __GFP_ZERO, 1);
-	if (IS_ERR_OR_NULL(cstrm->tfm) || !cstrm->buffer) {
-		zcomp_cstrm_free(cstrm);
-		cstrm = NULL;
+	zstrm->buffer = vzalloc(2 * PAGE_SIZE);
+	if (!zstrm->buffer) {
+		zcomp_strm_free(comp, zstrm);
+		return -ENOMEM;
 	}
-	return cstrm;
+	return 0;
 }
 
-static void zcomp_dstrm_free(struct zcomp_dstrm *dstrm)
+static const struct zcomp_ops *lookup_backend_ops(const char *comp)
 {
-	if (!IS_ERR_OR_NULL(dstrm->tfm))
-		crypto_free_comp(dstrm->tfm);
-	if (dstrm->tmpbuf)
-		free_pages((unsigned long)dstrm->tmpbuf, 1);
-	kfree(dstrm);
-}
+	int i = 0;
 
-static struct zcomp_dstrm *zcomp_dstrm_alloc(struct zcomp *comp)
-{
-	struct zcomp_dstrm *dstrm = kmalloc(sizeof(*dstrm), GFP_KERNEL);
-	if (!dstrm)
-		return NULL;
-
-	dstrm->tfm = crypto_alloc_comp(comp->name, 0, 0);
-	/* allocate 2 pages for decompression spanning temporary buffer */
-	dstrm->tmpbuf = (void *)__get_free_pages(GFP_KERNEL | __GFP_ZERO, 1);
-	if (IS_ERR_OR_NULL(dstrm->tfm) || !dstrm->tmpbuf) {
-		zcomp_dstrm_free(dstrm);
-		dstrm = NULL;
+	while (backends[i]) {
+		if (sysfs_streq(comp, backends[i]->name))
+			break;
+		i++;
 	}
-	return dstrm;
+	return backends[i];
 }
 
 bool zcomp_available_algorithm(const char *comp)
 {
-	int i;
-
-	i = __sysfs_match_string(backends, -1, comp);
-	if (i >= 0)
-		return true;
-
-	/*
-	 * Crypto does not ignore a trailing new line symbol,
-	 * so make sure you don't supply a string containing
-	 * one.
-	 * This also means that we permit zcomp initialisation
-	 * with any compressing algorithm known to crypto api.
-	 */
-	return crypto_has_comp(comp, 0, 0) == 1;
+	return lookup_backend_ops(comp) != NULL;
 }
 
 /* show available compressors */
 ssize_t zcomp_available_show(const char *comp, char *buf)
 {
-	bool known_algorithm = false;
 	ssize_t sz = 0;
-	int i = 0;
+	int i;
 
-	for (; backends[i]; i++) {
-		if (!strcmp(comp, backends[i])) {
-			known_algorithm = true;
+	for (i = 0; backends[i]; i++) {
+		if (!strcmp(comp, backends[i]->name)) {
 			sz += scnprintf(buf + sz, PAGE_SIZE - sz - 2,
-					"[%s] ", backends[i]);
+					"[%s] ", backends[i]->name);
 		} else {
 			sz += scnprintf(buf + sz, PAGE_SIZE - sz - 2,
-					"%s ", backends[i]);
+					"%s ", backends[i]->name);
 		}
 	}
-
-	/*
-	 * Out-of-tree module known to crypto api or a missing
-	 * entry in `backends'.
-	 */
-	if (!known_algorithm && crypto_has_comp(comp, 0, 0) == 1)
-		sz += scnprintf(buf + sz, PAGE_SIZE - sz - 2,
-				"[%s] ", comp);
 
 	sz += scnprintf(buf + sz, PAGE_SIZE - sz, "\n");
 	return sz;
 }
 
-struct zcomp_cstrm *zcomp_cstrm_get(struct zcomp *comp)
+struct zcomp_strm *zcomp_stream_get(struct zcomp *comp)
 {
-	if (comp->recomp_cstream) {
-		spin_lock(&comp->recomp_lock);
-		return comp->recomp_cstream;
-	}
-
-	return *get_cpu_ptr(comp->cstream);
+	preempt_disable();
+	return *this_cpu_ptr(comp->stream);
 }
 
-void zcomp_cstrm_put(struct zcomp *comp)
+void zcomp_stream_put(struct zcomp *comp)
 {
-	if (comp->recomp_cstream) {
-		spin_unlock(&comp->recomp_lock);
-		return;
-	}
-
-	put_cpu_ptr(comp->cstream);
+	preempt_enable();
 }
 
-struct zcomp_dstrm *zcomp_dstrm_get(struct zcomp *comp)
+int zcomp_compress(struct zcomp *comp, struct zcomp_strm *zstrm,
+		   const void *src, unsigned int *dst_len)
 {
-	return *get_cpu_ptr(comp->dstream);
+	struct zcomp_req req = {
+		.src = src,
+		.dst = zstrm->buffer,
+		.src_len = PAGE_SIZE,
+		.dst_len = 2 * PAGE_SIZE,
+	};
+	int ret;
+
+	ret = comp->ops->compress(comp->params, &zstrm->ctx, &req);
+	if (!ret)
+		*dst_len = req.dst_len;
+	return ret;
 }
 
-void zcomp_dstrm_put(struct zcomp *comp)
+int zcomp_decompress(struct zcomp *comp, struct zcomp_strm *zstrm,
+		     const void *src, unsigned int src_len, void *dst)
 {
-	put_cpu_ptr(comp->dstream);
-}
+	struct zcomp_req req = {
+		.src = src,
+		.dst = dst,
+		.src_len = src_len,
+		.dst_len = PAGE_SIZE,
+	};
 
-int zcomp_compress(struct zcomp_cstrm *zstrm,
-		const void *src, unsigned int *dst_len)
-{
-	/*
-	 * Our dst memory (zstrm->buffer) is always `2 * PAGE_SIZE' sized
-	 * because sometimes we can endup having a bigger compressed data
-	 * due to various reasons: for example compression algorithms tend
-	 * to add some padding to the compressed buffer. Speaking of padding,
-	 * comp algorithm `842' pads the compressed length to multiple of 8
-	 * and returns -ENOSP when the dst memory is not big enough, which
-	 * is not something that ZRAM wants to see. We can handle the
-	 * `compressed_size > PAGE_SIZE' case easily in ZRAM, but when we
-	 * receive -ERRNO from the compressing backend we can't help it
-	 * anymore. To make `842' happy we need to tell the exact size of
-	 * the dst buffer, zram_drv will take care of the fact that
-	 * compressed buffer is too big.
-	 */
-	*dst_len = PAGE_SIZE * 2;
-
-	return crypto_comp_compress(zstrm->tfm,
-			src, PAGE_SIZE,
-			zstrm->buffer, dst_len);
-}
-
-int zcomp_decompress(struct zcomp_dstrm *zstrm,
-		const void *src, unsigned int src_len, void *dst)
-{
-	unsigned int dst_len = PAGE_SIZE;
-
-	return crypto_comp_decompress(zstrm->tfm,
-			src, src_len,
-			dst, &dst_len);
+	return comp->ops->decompress(comp->params, &zstrm->ctx, &req);
 }
 
 int zcomp_cpu_up_prepare(unsigned int cpu, struct hlist_node *node)
 {
 	struct zcomp *comp = hlist_entry(node, struct zcomp, node);
-	struct zcomp_cstrm *cstrm = NULL;
-	struct zcomp_dstrm *dstrm;
+	struct zcomp_strm *zstrm;
+	int ret;
 
-	if (comp->cstream) {
-		if (WARN_ON(*per_cpu_ptr(comp->cstream, cpu)))
-			return 0;
-
-		cstrm = zcomp_cstrm_alloc(comp);
-		if (IS_ERR_OR_NULL(cstrm)) {
-			pr_err("Can't allocate a compression stream\n");
-			return -ENOMEM;
-		}
-		*per_cpu_ptr(comp->cstream, cpu) = cstrm;
-	}
-
-	if (WARN_ON(*per_cpu_ptr(comp->dstream, cpu)))
-		return 0;
-
-	dstrm = zcomp_dstrm_alloc(comp);
-	if (IS_ERR_OR_NULL(dstrm)) {
-		pr_err("Can't allocate a decompression stream\n");
-		if (cstrm) {
-			zcomp_cstrm_free(cstrm);
-			*per_cpu_ptr(comp->cstream, cpu) = NULL;
-		}
+	zstrm = kzalloc_node(sizeof(*zstrm), GFP_KERNEL, cpu_to_node(cpu));
+	if (!zstrm)
 		return -ENOMEM;
+
+	ret = zcomp_strm_init(comp, zstrm);
+	if (ret) {
+		pr_err("Can't allocate a compression stream\n");
+		kfree(zstrm);
+		return ret;
 	}
-	*per_cpu_ptr(comp->dstream, cpu) = dstrm;
+	*per_cpu_ptr(comp->stream, cpu) = zstrm;
 	return 0;
 }
 
 int zcomp_cpu_dead(unsigned int cpu, struct hlist_node *node)
 {
 	struct zcomp *comp = hlist_entry(node, struct zcomp, node);
-	struct zcomp_cstrm *cstrm;
-	struct zcomp_dstrm *dstrm;
+	struct zcomp_strm *zstrm;
 
-	if (comp->cstream) {
-		cstrm = *per_cpu_ptr(comp->cstream, cpu);
-		if (!IS_ERR_OR_NULL(cstrm))
-			zcomp_cstrm_free(cstrm);
-		*per_cpu_ptr(comp->cstream, cpu) = NULL;
+	zstrm = *per_cpu_ptr(comp->stream, cpu);
+	if (zstrm) {
+		zcomp_strm_free(comp, zstrm);
+		kfree(zstrm);
+		*per_cpu_ptr(comp->stream, cpu) = NULL;
 	}
-
-	dstrm = *per_cpu_ptr(comp->dstream, cpu);
-	if (!IS_ERR_OR_NULL(dstrm))
-		zcomp_dstrm_free(dstrm);
-	*per_cpu_ptr(comp->dstream, cpu) = NULL;
 	return 0;
 }
 
-static int zcomp_init(struct zcomp *comp, bool is_recomp)
+static int zcomp_init(struct zcomp *comp, struct zcomp_params *params)
 {
 	int ret;
 
-	if (is_recomp) {
-		spin_lock_init(&comp->recomp_lock);
-		comp->recomp_cstream = zcomp_cstrm_alloc(comp);
-		if (!comp->recomp_cstream)
-			return -ENOMEM;
-	} else {
-		comp->cstream = alloc_percpu(struct zcomp_cstrm *);
-		if (!comp->cstream)
-			return -ENOMEM;
-	}
-
-	comp->dstream = alloc_percpu(struct zcomp_dstrm *);
-	if (!comp->dstream) {
-		if (comp->cstream)
-			free_percpu(comp->cstream);
-		if (comp->recomp_cstream)
-			zcomp_cstrm_free(comp->recomp_cstream);
+	comp->stream = alloc_percpu(struct zcomp_strm *);
+	if (!comp->stream)
 		return -ENOMEM;
+
+	comp->params = params;
+	if (comp->ops->setup_params) {
+		ret = comp->ops->setup_params(comp->params);
+		if (ret)
+			goto cleanup;
 	}
 
 	ret = cpuhp_state_add_instance(CPUHP_ZCOMP_PREPARE, &comp->node);
 	if (ret < 0)
 		goto cleanup;
+
 	return 0;
 
 cleanup:
-	free_percpu(comp->dstream);
-	if (comp->cstream)
-		free_percpu(comp->cstream);
-	if (comp->recomp_cstream)
-		zcomp_cstrm_free(comp->recomp_cstream);
+	if (comp->ops->release_params)
+		comp->ops->release_params(comp->params);
+	free_percpu(comp->stream);
 	return ret;
 }
 
 void zcomp_destroy(struct zcomp *comp)
 {
+	if (!comp)
+		return;
 	cpuhp_state_remove_instance(CPUHP_ZCOMP_PREPARE, &comp->node);
-	free_percpu(comp->dstream);
-	if (comp->cstream)
-		free_percpu(comp->cstream);
-	if (comp->recomp_cstream)
-		zcomp_cstrm_free(comp->recomp_cstream);
+	if (comp->ops && comp->ops->release_params)
+		comp->ops->release_params(comp->params);
+	free_percpu(comp->stream);
 	kfree(comp);
 }
 
-/*
- * search available compressors for requested algorithm.
- * allocate new zcomp and initialize it. return compressing
- * backend pointer or ERR_PTR if things went bad. ERR_PTR(-EINVAL)
- * if requested algorithm is not supported, ERR_PTR(-ENOMEM) in
- * case of allocation error, or any other error potentially
- * returned by zcomp_init().
- */
-struct zcomp *zcomp_create(const char *alg, bool is_recomp)
+struct zcomp *zcomp_create(const char *alg, struct zcomp_params *params)
 {
 	struct zcomp *comp;
 	int error;
 
-	if (!zcomp_available_algorithm(alg))
-		return ERR_PTR(-EINVAL);
+	BUILD_BUG_ON(ARRAY_SIZE(backends) <= 1);
 
 	comp = kzalloc(sizeof(struct zcomp), GFP_KERNEL);
 	if (!comp)
 		return ERR_PTR(-ENOMEM);
 
-	comp->name = alg;
-	error = zcomp_init(comp, is_recomp);
+	comp->ops = lookup_backend_ops(alg);
+	if (!comp->ops) {
+		kfree(comp);
+		return ERR_PTR(-EINVAL);
+	}
+
+	error = zcomp_init(comp, params);
 	if (error) {
 		kfree(comp);
 		return ERR_PTR(error);
