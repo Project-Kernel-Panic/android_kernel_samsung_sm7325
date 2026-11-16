@@ -12,26 +12,16 @@
 #ifndef zstd_default_clevel
 #define zstd_default_clevel() 3
 #endif
-#ifndef zstd_min_clevel
-#define zstd_min_clevel() 1
-#endif
-#ifndef zstd_max_clevel
-#define zstd_max_clevel() ZSTD_maxCLevel()
-#endif
 
 struct zstd_ctx {
-	ZSTD_CCtx *cctx;
-	ZSTD_DCtx *dctx;
+	zstd_cctx *cctx;
+	zstd_dctx *dctx;
 	void *cctx_mem;
 	void *dctx_mem;
 };
 
 struct zstd_params {
-	ZSTD_CDict *cdict;
-	void *cdict_mem;
-	ZSTD_DDict *ddict;
-	void *ddict_mem;
-	ZSTD_parameters cprm;
+	zstd_parameters cprm;
 };
 
 static void zstd_release_params(struct zcomp_params *params)
@@ -39,11 +29,6 @@ static void zstd_release_params(struct zcomp_params *params)
 	struct zstd_params *zp = params->drv_data;
 
 	params->drv_data = NULL;
-	if (!zp)
-		return;
-
-	vfree(zp->cdict_mem);
-	vfree(zp->ddict_mem);
 	kfree(zp);
 }
 
@@ -64,28 +49,12 @@ static int zstd_setup_params(struct zcomp_params *params)
 		goto error;
 	}
 
-	zp->cprm = ZSTD_getParams(params->level, PAGE_SIZE, 0);
-
-	if (params->dict_sz > 0 && params->dict) {
-		size_t sz = ZSTD_CDictWorkspaceBound(zp->cprm.cParams);
-		zp->cdict_mem = vzalloc(sz);
-		if (!zp->cdict_mem)
-			goto error;
-		zp->cdict = ZSTD_initCDict(params->dict, params->dict_sz,
-					   zp->cprm, zp->cdict_mem, sz);
-		if (!zp->cdict)
-			goto error;
-
-		sz = ZSTD_DDictWorkspaceBound();
-		zp->ddict_mem = vzalloc(sz);
-		if (!zp->ddict_mem)
-			goto error;
-		zp->ddict = ZSTD_initDDict(params->dict, params->dict_sz,
-					   zp->ddict_mem, sz);
-		if (!zp->ddict)
-			goto error;
+	if (params->dict_sz > 0) {
+		pr_err("dictionaries not supported\n");
+		goto error;
 	}
 
+	zp->cprm = zstd_get_params(params->level, PAGE_SIZE);
 	return 0;
 
 error:
@@ -107,7 +76,7 @@ static void zstd_destroy(struct zcomp_ctx *ctx)
 static int zstd_create(struct zcomp_params *params, struct zcomp_ctx *ctx)
 {
 	struct zstd_ctx *zctx;
-	struct zstd_params *zp = params->drv_data;
+	zstd_parameters prm;
 	size_t sz;
 
 	zctx = kzalloc(sizeof(*zctx), GFP_KERNEL);
@@ -116,21 +85,22 @@ static int zstd_create(struct zcomp_params *params, struct zcomp_ctx *ctx)
 
 	ctx->context = zctx;
 
-	sz = ZSTD_CCtxWorkspaceBound(zp->cprm.cParams);
+	prm = zstd_get_params(params->level, PAGE_SIZE);
+	sz = zstd_cctx_workspace_bound(&prm.cParams);
 	zctx->cctx_mem = vzalloc(sz);
 	if (!zctx->cctx_mem)
 		goto error;
 
-	zctx->cctx = ZSTD_initCCtx(zctx->cctx_mem, sz);
+	zctx->cctx = zstd_init_cctx(zctx->cctx_mem, sz);
 	if (!zctx->cctx)
 		goto error;
 
-	sz = ZSTD_DCtxWorkspaceBound();
+	sz = zstd_dctx_workspace_bound();
 	zctx->dctx_mem = vzalloc(sz);
 	if (!zctx->dctx_mem)
 		goto error;
 
-	zctx->dctx = ZSTD_initDCtx(zctx->dctx_mem, sz);
+	zctx->dctx = zstd_init_dctx(zctx->dctx_mem, sz);
 	if (!zctx->dctx)
 		goto error;
 
@@ -148,15 +118,9 @@ static int zstd_compress(struct zcomp_params *params, struct zcomp_ctx *ctx,
 	struct zstd_ctx *zctx = ctx->context;
 	size_t ret;
 
-	if (!zp->cdict)
-		ret = ZSTD_compressCCtx(zctx->cctx, req->dst, req->dst_len,
-					req->src, req->src_len, zp->cprm);
-	else
-		ret = ZSTD_compress_usingCDict(zctx->cctx, req->dst,
-					       req->dst_len, req->src,
-					       req->src_len,
-					       zp->cdict);
-	if (ZSTD_isError(ret))
+	ret = zstd_compress_cctx(zctx->cctx, req->dst, req->dst_len,
+				 req->src, req->src_len, &zp->cprm);
+	if (zstd_is_error(ret))
 		return -EINVAL;
 	req->dst_len = ret;
 	return 0;
@@ -165,18 +129,12 @@ static int zstd_compress(struct zcomp_params *params, struct zcomp_ctx *ctx,
 static int zstd_decompress(struct zcomp_params *params, struct zcomp_ctx *ctx,
 			   struct zcomp_req *req)
 {
-	struct zstd_params *zp = params->drv_data;
 	struct zstd_ctx *zctx = ctx->context;
 	size_t ret;
 
-	if (!zp->ddict)
-		ret = ZSTD_decompressDCtx(zctx->dctx, req->dst, req->dst_len,
-					  req->src, req->src_len);
-	else
-		ret = ZSTD_decompress_usingDDict(zctx->dctx, req->dst,
-						 req->dst_len, req->src,
-						 req->src_len, zp->ddict);
-	if (ZSTD_isError(ret))
+	ret = zstd_decompress_dctx(zctx->dctx, req->dst, req->dst_len,
+				   req->src, req->src_len);
+	if (zstd_is_error(ret))
 		return -EINVAL;
 	return 0;
 }
