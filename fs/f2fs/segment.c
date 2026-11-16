@@ -1762,9 +1762,14 @@ static int issue_discard_thread(void *data)
 			continue;
 		}
 
-		if (sbi->gc_mode == GC_URGENT ||
-			!f2fs_available_free_memory(sbi, DISCARD_CACHE))
+		if (sbi->gc_mode == GC_URGENT_HIGH ||
+			!f2fs_available_free_memory(sbi, DISCARD_CACHE)) {
 			__init_discard_policy(sbi, &dpolicy, DPOLICY_FORCE, 1);
+		} else if (sbi->gc_mode == GC_URGENT_LOW) {
+			__init_discard_policy(sbi, &dpolicy, DPOLICY_FORCE,
+					dcc->discard_granularity);
+			dpolicy.io_aware = true;
+		}
 
 		sb_start_intwrite(sbi->sb);
 
