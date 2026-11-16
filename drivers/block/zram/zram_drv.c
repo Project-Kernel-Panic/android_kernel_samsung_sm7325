@@ -572,6 +572,7 @@ static void reset_bdev(struct zram *zram)
 				BDI_CAP_SYNCHRONOUS_IO;
 	kvfree(zram->bitmap);
 	zram->bitmap = NULL;
+	zram->nr_pages = 0;
 #ifdef CONFIG_ZRAM_LRU_WRITEBACK
 	deinit_lru_writeback(zram);
 #endif
@@ -3849,6 +3850,10 @@ static void zram_reset_device(struct zram *zram)
 	zram_destroy_comps(zram);
 	memset(&zram->stats, 0, sizeof(zram->stats));
 	reset_bdev(zram);
+#ifdef CONFIG_ZRAM_WRITEBACK
+	zram->wb_limit_enable = false;
+	zram->bd_wb_limit = 0;
+#endif
 
 	comp_algorithm_set(zram, ZRAM_PRIMARY_COMP, default_compressor);
 }
