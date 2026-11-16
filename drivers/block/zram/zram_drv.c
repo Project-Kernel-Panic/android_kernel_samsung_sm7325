@@ -3530,7 +3530,7 @@ static ssize_t recompress_store(struct device *dev,
 {
 	u32 prio = ZRAM_SECONDARY_COMP, prio_max = ZRAM_MAX_COMPS;
 	struct zram *zram = dev_to_zram(dev);
-	unsigned long nr_pages = zram->disksize >> PAGE_SHIFT;
+	unsigned long nr_pages;
 	char *args, *param, *val, *algo = NULL;
 	u32 mode = 0, threshold = 0;
 	unsigned long index;
@@ -3581,6 +3581,8 @@ static ssize_t recompress_store(struct device *dev,
 		ret = -EINVAL;
 		goto release_init_lock;
 	}
+
+	nr_pages = zram->disksize >> PAGE_SHIFT;
 
 	if (algo) {
 		bool found = false;
