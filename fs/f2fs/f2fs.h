@@ -1320,8 +1320,11 @@ enum {
 	GC_NORMAL,
 	GC_IDLE_CB,
 	GC_IDLE_GREEDY,
-	GC_URGENT,
+	GC_URGENT_HIGH,
+	GC_URGENT_LOW,
+	MAX_GC_MODE,
 };
+#define GC_URGENT GC_URGENT_HIGH
 
 enum {
 	BGGC_MODE_ON,		/* background gc is on */
