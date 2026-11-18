@@ -2326,7 +2326,7 @@ void mark_task_starting(struct task_struct *p)
  * sched_group_upmigrate need to be up-migrated if possible.
  */
 unsigned int __read_mostly sched_group_upmigrate = 20000000;
-unsigned int __read_mostly sysctl_sched_group_upmigrate_pct = 100;
+unsigned int __read_mostly sysctl_sched_group_upmigrate_pct = 75;
 
 /*
  * Task groups, once up-migrated, will need to drop their aggregate
@@ -2334,7 +2334,7 @@ unsigned int __read_mostly sysctl_sched_group_upmigrate_pct = 100;
  * migrated.
  */
 unsigned int __read_mostly sched_group_downmigrate = 19000000;
-unsigned int __read_mostly sysctl_sched_group_downmigrate_pct = 95;
+unsigned int __read_mostly sysctl_sched_group_downmigrate_pct = 60;
 
 static inline void walt_update_group_thresholds(void)
 {
@@ -3690,6 +3690,18 @@ int walt_proc_group_thresholds_handler(struct ctl_table *table, int write,
 		mutex_unlock(&mutex);
 		return ret;
 	}
+
+	/*
+	 * Clamp thresholds to 75% up / 60% down for 120Hz responsiveness.
+	 * Even if vendor post-boot scripts attempt to write 100 / 85,
+	 * prevent UI task groups from being pinned to Little cores.
+	 */
+	if (sysctl_sched_group_upmigrate_pct > 75)
+		sysctl_sched_group_upmigrate_pct = 75;
+	if (sysctl_sched_group_downmigrate_pct > 60)
+		sysctl_sched_group_downmigrate_pct = 60;
+	if (sysctl_sched_group_downmigrate_pct > sysctl_sched_group_upmigrate_pct)
+		sysctl_sched_group_downmigrate_pct = sysctl_sched_group_upmigrate_pct;
 
 	/*
 	 * The load scale factor update happens with all

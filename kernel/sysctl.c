@@ -451,7 +451,8 @@ static struct ctl_table kern_table[] = {
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler	= walt_proc_group_thresholds_handler,
-		.extra1		= &sysctl_sched_group_downmigrate_pct,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= &one_hundred,
 	},
 	{
 		.procname	= "sched_group_downmigrate",
@@ -460,7 +461,7 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= walt_proc_group_thresholds_handler,
 		.extra1		= SYSCTL_ZERO,
-		.extra2		= &sysctl_sched_group_upmigrate_pct,
+		.extra2		= &one_hundred,
 	},
 	{
 		.procname	= "sched_boost",
