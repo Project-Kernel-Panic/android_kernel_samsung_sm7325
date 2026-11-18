@@ -57,6 +57,21 @@ config ZRAM_MULTI_COMP
 	  This will enable multi-compression streams, so that ZRAM can
 	  re-compress pages using secondary algorithms.
 
+config ZRAM_DEF_SIZE_MB
+	int "Default or minimum ZRAM disk size in megabytes"
+	depends on ZRAM
+	default 0
+	help
+	  Specify a minimum disk size for ZRAM block devices in megabytes.
+
+	  If non-zero, any initialization request through the disksize sysfs
+	  interface that specifies a capacity below this value will be elevated
+	  to this minimum threshold. This is useful on platforms where vendor
+	  init scripts or fstab configurations specify a suboptimal swap size
+	  relative to available physical memory.
+
+	  Set to 0 to disable minimum threshold enforcement.
+
 choice
 	prompt "Default zram compressor"
 	default ZRAM_DEF_COMP_LZ4 if CRYPTO_LZ4

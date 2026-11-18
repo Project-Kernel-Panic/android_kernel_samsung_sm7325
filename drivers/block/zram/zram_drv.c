@@ -4071,6 +4071,14 @@ static ssize_t disksize_store(struct device *dev,
 	if (!disksize)
 		return -EINVAL;
 
+#if CONFIG_ZRAM_DEF_SIZE_MB > 0
+	if (disksize < (u64)CONFIG_ZRAM_DEF_SIZE_MB * SZ_1M) {
+		pr_info("%s: disksize (%llu bytes) below minimum threshold, enforcing %u MB\n",
+			zram->disk->disk_name, disksize, CONFIG_ZRAM_DEF_SIZE_MB);
+		disksize = (u64)CONFIG_ZRAM_DEF_SIZE_MB * SZ_1M;
+	}
+#endif
+
 	down_write(&zram->init_lock);
 	if (init_done(zram)) {
 		pr_info("Cannot change disksize for initialized device\n");
