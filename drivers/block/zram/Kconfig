@@ -57,6 +57,16 @@ config ZRAM_MULTI_COMP
 	  This will enable multi-compression streams, so that ZRAM can
 	  re-compress pages using secondary algorithms.
 
+config ZRAM_DEF_SECONDARY_COMP
+	string "Default secondary compressor for recompression"
+	depends on ZRAM_MULTI_COMP
+	default "zstd"
+	help
+	  Specify a default secondary compression algorithm (e.g. "zstd" or "lz4hc")
+	  to be automatically initialized when multiple compression streams are
+	  enabled. This enables immediate recompression support without requiring
+	  pre-initialization userspace sysfs scripts.
+
 config ZRAM_DEF_SIZE_MB
 	int "Default or minimum ZRAM disk size in megabytes"
 	depends on ZRAM

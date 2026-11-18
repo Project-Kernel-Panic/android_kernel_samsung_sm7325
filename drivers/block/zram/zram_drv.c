@@ -55,6 +55,9 @@ static DEFINE_MUTEX(zram_index_mutex);
 
 static int zram_major;
 static const char *default_compressor = CONFIG_ZRAM_DEF_COMP;
+#if defined(CONFIG_ZRAM_MULTI_COMP) && defined(CONFIG_ZRAM_DEF_SECONDARY_COMP)
+static const char *default_secondary_compressor = CONFIG_ZRAM_DEF_SECONDARY_COMP;
+#endif
 
 static bool is_lzorle;
 static unsigned char lzo_marker[4] = {0x11, 0x00, 0x00};
@@ -2595,7 +2598,11 @@ static ssize_t max_comp_streams_store(struct device *dev,
 static void comp_algorithm_set(struct zram *zram, u32 prio, const char *alg)
 {
 	/* Do not free statically defined compression algorithms */
-	if (zram->comp_algs[prio] != default_compressor)
+	if (zram->comp_algs[prio] != default_compressor
+#if defined(CONFIG_ZRAM_MULTI_COMP) && defined(CONFIG_ZRAM_DEF_SECONDARY_COMP)
+	    && zram->comp_algs[prio] != default_secondary_compressor
+#endif
+	)
 		kfree(zram->comp_algs[prio]);
 
 	zram->comp_algs[prio] = alg;
@@ -4024,6 +4031,10 @@ static void zram_destroy_comps(struct zram *zram)
 
 	zram_comp_params_reset(zram);
 	comp_algorithm_set(zram, ZRAM_PRIMARY_COMP, default_compressor);
+#if defined(CONFIG_ZRAM_MULTI_COMP) && defined(CONFIG_ZRAM_DEF_SECONDARY_COMP)
+	if (zcomp_available_algorithm(default_secondary_compressor))
+		comp_algorithm_set(zram, ZRAM_SECONDARY_COMP, default_secondary_compressor);
+#endif
 }
 
 static void zram_reset_device(struct zram *zram)
@@ -4341,6 +4352,10 @@ static int zram_add(void)
 
 	zram_comp_params_reset(zram);
 	comp_algorithm_set(zram, ZRAM_PRIMARY_COMP, default_compressor);
+#if defined(CONFIG_ZRAM_MULTI_COMP) && defined(CONFIG_ZRAM_DEF_SECONDARY_COMP)
+	if (zcomp_available_algorithm(default_secondary_compressor))
+		comp_algorithm_set(zram, ZRAM_SECONDARY_COMP, default_secondary_compressor);
+#endif
 
 	device_add_disk(NULL, zram->disk, zram_disk_attr_groups);
 
