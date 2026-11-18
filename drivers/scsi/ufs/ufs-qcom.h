@@ -55,8 +55,8 @@
 
 /* default value of auto suspend is 3 seconds */
 #define UFS_QCOM_AUTO_SUSPEND_DELAY	3000
-#define UFS_QCOM_CLK_GATING_DELAY_MS_PWR_SAVE	30
-#define UFS_QCOM_CLK_GATING_DELAY_MS_PERF	50
+#define UFS_QCOM_CLK_GATING_DELAY_MS_PWR_SAVE	60
+#define UFS_QCOM_CLK_GATING_DELAY_MS_PERF	100
 
 /* QCOM UFS host controller vendor specific registers */
 enum {
