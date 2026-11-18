@@ -30,6 +30,7 @@
 
 #ifndef __ASSEMBLY__
 
+#include <asm/cpufeature.h>
 #include <asm/cmpxchg.h>
 #include <asm/fixmap.h>
 #include <linux/mmdebug.h>
@@ -784,6 +785,16 @@ static inline int ptep_clear_flush_young(struct vm_area_struct *vma,
 
 	return young;
 }
+
+static inline bool arch_faults_on_old_pte(void)
+{
+	WARN_ON(!rcu_is_watching());
+
+	return !cpu_has_hw_af();
+}
+#define arch_faults_on_old_pte arch_faults_on_old_pte
+
+#define arch_has_hw_pte_young cpu_has_hw_af
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 #define __HAVE_ARCH_PMDP_TEST_AND_CLEAR_YOUNG
