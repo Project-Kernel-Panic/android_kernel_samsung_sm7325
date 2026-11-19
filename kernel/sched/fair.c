@@ -6265,7 +6265,7 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 		runnable_load = 0;
 		max_spare_cap = 0;
 
-		for_each_cpu(i, sched_group_span(group)) {
+		for_each_cpu_and(i, sched_group_span(group), p->cpus_ptr) {
 			load = cpu_runnable_load(cpu_rq(i));
 			runnable_load += load;
 
