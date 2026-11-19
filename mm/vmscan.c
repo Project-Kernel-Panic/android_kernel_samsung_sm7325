@@ -2578,7 +2578,9 @@ static struct attribute_group vmscan_attr_group = {
  * initial fault. And the second scan makes sure it hasn't been used since the
  * first scan.
  */
+#ifndef MIN_NR_GENS
 #define MIN_NR_GENS	2
+#endif
 
 #define MAX_BATCH_SIZE	8192
 
