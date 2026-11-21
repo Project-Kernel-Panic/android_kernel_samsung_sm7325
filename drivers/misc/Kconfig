@@ -528,6 +528,17 @@ config GPIO_DS_DETECT
 	bool "Support GPIO DS Detect"
 	default n
 
+config NTSYNC
+	tristate "NT synchronization primitive emulation"
+	help
+	  This module provides support for emulation of Windows NT synchronization
+	  primitives via the /dev/ntsync character device. It is intended to be
+	  used by Wine and Proton to provide faster synchronization primitives
+	  than can be achieved using eventfd or futexes.
+
+	  To compile this driver as a module, choose M here: the module will be
+	  called ntsync.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
