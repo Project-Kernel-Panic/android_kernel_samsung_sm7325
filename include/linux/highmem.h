@@ -217,6 +217,36 @@ static inline void clear_highpage(struct page *page)
 	kunmap_atomic(kaddr);
 }
 
+static inline void memset_page(struct page *page, size_t offset, int val, size_t len)
+{
+	char *addr = kmap_atomic(page);
+
+	memset(addr + offset, val, len);
+	kunmap_atomic(addr);
+}
+
+static inline void memcpy_page(struct page *dst_page, size_t dst_off,
+			       struct page *src_page, size_t src_off, size_t len)
+{
+	char *dst = kmap_atomic(dst_page);
+	char *src = kmap_atomic(src_page);
+
+	memcpy(dst + dst_off, src + src_off, len);
+	kunmap_atomic(src);
+	kunmap_atomic(dst);
+}
+
+static inline void memmove_page(struct page *dst_page, size_t dst_off,
+			       struct page *src_page, size_t src_off, size_t len)
+{
+	char *dst = kmap_atomic(dst_page);
+	char *src = kmap_atomic(src_page);
+
+	memmove(dst + dst_off, src + src_off, len);
+	kunmap_atomic(src);
+	kunmap_atomic(dst);
+}
+
 static inline void zero_user_segments(struct page *page,
 	unsigned start1, unsigned end1,
 	unsigned start2, unsigned end2)
