@@ -3913,7 +3913,6 @@ static inline void migrate_se_pelt_lag(struct sched_entity *se)
 #else
 static void migrate_se_pelt_lag(struct sched_entity *se) {}
 #endif
-
 static int sched_balance_newidle(struct rq *this_rq, struct rq_flags *rf);
 
 static inline unsigned long _task_util_est(struct task_struct *p)
@@ -8213,6 +8212,11 @@ idle:
 		if (new_tasks > 0)
 			goto again;
 	}
+	/*
+	 * rq is about to be idle, check if we need to update the
+	 * lost_idle_time of clock_pelt
+	 */
+	update_idle_rq_clock_pelt(rq);
 
 	return NULL;
 }

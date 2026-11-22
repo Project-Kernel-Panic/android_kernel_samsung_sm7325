@@ -2390,8 +2390,6 @@ static irqreturn_t ep_pcie_handle_dstate_change_irq(int irq, void *data)
 		dev->pme_en_d3 = readl_relaxed(dev->dm_core +
 						PCIE20_CON_STATUS) & PCIE20_MASK_PME_EN;
 
-		dev->pme_en_d3 = readl_relaxed(dev->dm_core +
-						PCIE20_CON_STATUS) & PCIE20_MASK_PME_EN;
 
 		if (dev->enumerated)
 			ep_pcie_notify_event(dev, EP_PCIE_EVENT_PM_D3_HOT);

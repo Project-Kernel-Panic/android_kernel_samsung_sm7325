@@ -44,7 +44,6 @@ static LIST_HEAD(clk_notifier_list);
 /* List of registered clks that use runtime PM */
 static HLIST_HEAD(clk_rpm_list);
 static DEFINE_MUTEX(clk_rpm_list_lock);
-
 static const struct hlist_head *all_lists[] = {
 	&clk_root_list,
 	&clk_orphan_list,

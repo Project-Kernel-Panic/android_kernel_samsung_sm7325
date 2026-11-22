@@ -1621,7 +1621,6 @@ int32_t npu_host_unload_network(struct npu_client *client,
 	}
 	network->is_unloading = true;
 
-	network->is_unloading = true;
 
 	pr_debug("Unload network %lld\n", network->id);
 	/* prepare IPC packet for UNLOAD */

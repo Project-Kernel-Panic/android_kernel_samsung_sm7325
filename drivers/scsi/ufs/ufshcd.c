@@ -7007,7 +7007,6 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 	if (lrbp->lun == UFS_UPIU_UFS_DEVICE_WLUN)
 		return ufshcd_eh_host_reset_handler(cmd);
 #endif
-
 	SEC_ufs_utp_error_check(cmd, 0);
 
 	ufshcd_hold(hba, false);

@@ -2922,7 +2922,7 @@ static int __do_proc_dointvec(void *tbl_data, struct ctl_table *table,
 	if (write && !err && left)
 		proc_skip_spaces(&p, &left);
 	if (write && first)
-			return err ? : -EINVAL;
+		return err ? : -EINVAL;
 	*lenp -= left;
 out:
 	*ppos += *lenp;
@@ -3421,7 +3421,7 @@ static int __do_proc_doulongvec_minmax(void *data, struct ctl_table *table,
 	if (write && !err)
 		proc_skip_spaces(&p, &left);
 	if (write && first)
-			return err ? : -EINVAL;
+		return err ? : -EINVAL;
 	*lenp -= left;
 out:
 	*ppos += *lenp;

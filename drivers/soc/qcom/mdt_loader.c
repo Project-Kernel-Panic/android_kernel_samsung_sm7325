@@ -161,8 +161,6 @@ void *qcom_mdt_read_metadata(struct device *dev, const struct firmware *fw, cons
 	if (!mdt_header_valid(fw))
 		return ERR_PTR(-EINVAL);
 
-	if (!mdt_header_valid(fw))
-		return ERR_PTR(-EINVAL);
 
 	ehdr = (struct elf32_hdr *)fw->data;
 	phdrs = (struct elf32_phdr *)(ehdr + 1);
@@ -189,9 +187,6 @@ void *qcom_mdt_read_metadata(struct device *dev, const struct firmware *fw, cons
 	if (ehdr_size >  SIZE_MAX - hash_size)
 		return ERR_PTR(-ENOMEM);
 
-	/* Overflow check */
-	if (ehdr_size >  SIZE_MAX - hash_size)
-		return ERR_PTR(-ENOMEM);
 
 	data = kmalloc(ehdr_size + hash_size, GFP_KERNEL);
 	if (!data)

@@ -318,8 +318,9 @@ static int qcom_dload_reboot(struct notifier_block *this, unsigned long event,
 {
 	char *cmd = ptr;
 	struct qcom_dload *poweroff = container_of(this, struct qcom_dload,
-						     reboot_nb);
+						reboot_nb);
 
+	poweroff->in_reboot = true;
 	pr_debug("%s : cmd : %s\n", __func__, cmd);		/* CONFIG_SEC_DEBUG */
 
 	/* Clean shutdown, disable dump mode to allow normal restart */
