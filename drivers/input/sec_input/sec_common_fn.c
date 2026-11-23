@@ -159,12 +159,10 @@ int sec_input_handler_start(struct device *dev)
 {
 	struct sec_ts_plat_data *pdata = dev->platform_data;
 	unsigned int irq = gpio_to_irq(pdata->irq_gpio);
-	struct irq_desc *desc = irq_to_desc(irq);
+	u32 trigger_type = irq_get_trigger_type(irq);
 
-	if (desc && desc->action) {
-		if ((desc->action->flags & IRQF_TRIGGER_LOW) && (gpio_get_value(pdata->irq_gpio) == 1))
-			return SEC_ERROR;
-	}
+	if ((trigger_type & IRQF_TRIGGER_LOW) && (gpio_get_value(pdata->irq_gpio) == 1))
+		return SEC_ERROR;
 
 	if (pdata->power_state == SEC_INPUT_STATE_LPM) {
 		__pm_wakeup_event(pdata->sec_ws, SEC_TS_WAKE_LOCK_TIME);
@@ -556,7 +554,7 @@ void sec_input_print_info(struct device *dev, struct sec_tclm_data *tdata)
 			pdata->touch_noise_status, pdata->touch_pre_noise_status,
 			pdata->external_noise_mode, pdata->wet_mode,
 			pdata->wirelesscharger_mode, pdata->force_wirelesscharger_mode,
-			pdata->lowpower_mode, pdata->touch_functions, pdata->ic_status, desc->depth,
+			pdata->lowpower_mode, pdata->touch_functions, pdata->ic_status, desc ? desc->depth : 0,
 			pdata->ed_enable, pdata->pocket_mode, pdata->low_sensitivity_mode,
 			pdata->img_version_of_ic[2], pdata->img_version_of_ic[3],
 			tclm_buff, pdata->tspid_val, pdata->tspicid_val,
