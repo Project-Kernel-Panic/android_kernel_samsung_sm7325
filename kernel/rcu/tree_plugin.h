@@ -2303,6 +2303,7 @@ void rcu_nocb_flush_deferred_wakeup(void)
 	do_nocb_deferred_wakeup(this_cpu_ptr(&rcu_data));
 }
 
+#ifdef CONFIG_RCU_LAZY
 static unsigned long
 lazy_rcu_shrink_count(struct shrinker *shrink, struct shrink_control *sc)
 {
@@ -2350,6 +2351,7 @@ static struct shrinker lazy_rcu_shrinker = {
 	.batch = 0,
 	.seeks = DEFAULT_SEEKS,
 };
+#endif // #ifdef CONFIG_RCU_LAZY
 
 void __init rcu_init_nohz(void)
 {
@@ -2371,8 +2373,10 @@ void __init rcu_init_nohz(void)
 	if (!cpumask_available(rcu_nocb_mask))
 		return;
 
+#ifdef CONFIG_RCU_LAZY
 	if (register_shrinker(&lazy_rcu_shrinker))
 		pr_err("Failed to register lazy_rcu shrinker!\n");
+#endif // #ifdef CONFIG_RCU_LAZY
 
 #if defined(CONFIG_NO_HZ_FULL)
 	if (tick_nohz_full_running)
