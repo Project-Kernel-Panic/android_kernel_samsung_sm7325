@@ -428,7 +428,7 @@ static unsigned long rcu_no_completed(void)
 
 static void rcu_torture_deferred_free(struct rcu_torture *p)
 {
-	call_rcu(&p->rtort_rcu, rcu_torture_cb);
+	call_rcu_hurry(&p->rtort_rcu, rcu_torture_cb);
 }
 
 static void rcu_sync_torture_init(void)
@@ -449,7 +449,7 @@ static struct rcu_torture_ops rcu_ops = {
 	.exp_sync	= synchronize_rcu_expedited,
 	.get_state	= get_state_synchronize_rcu,
 	.cond_sync	= cond_synchronize_rcu,
-	.call		= call_rcu,
+	.call		= call_rcu_hurry,
 	.cb_barrier	= rcu_barrier,
 	.fqs		= rcu_force_quiescent_state,
 	.stats		= NULL,
@@ -2295,10 +2295,10 @@ static void rcu_test_debug_objects(void)
 	/* Try to queue the rh2 pair of callbacks for the same grace period. */
 	preempt_disable(); /* Prevent preemption from interrupting test. */
 	rcu_read_lock(); /* Make it impossible to finish a grace period. */
-	call_rcu(&rh1, rcu_torture_leak_cb); /* Start grace period. */
+	call_rcu_hurry(&rh1, rcu_torture_leak_cb); /* Start grace period. */
 	local_irq_disable(); /* Make it harder to start a new grace period. */
-	call_rcu(&rh2, rcu_torture_leak_cb);
-	call_rcu(&rh2, rcu_torture_err_cb); /* Duplicate callback. */
+	call_rcu_hurry(&rh2, rcu_torture_leak_cb);
+	call_rcu_hurry(&rh2, rcu_torture_err_cb); /* Duplicate callback. */
 	local_irq_enable();
 	rcu_read_unlock();
 	preempt_enable();
