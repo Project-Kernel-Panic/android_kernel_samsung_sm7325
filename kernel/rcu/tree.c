@@ -2561,7 +2561,8 @@ static void rcu_leak_callback(struct rcu_head *rhp)
  * is expected to specify a CPU.
  */
 static void
-__call_rcu(struct rcu_head *head, rcu_callback_t func, bool lazy)
+__call_rcu_common(struct rcu_head *head, rcu_callback_t func,
+		  bool kfree_lazy, bool lazy)
 {
 	unsigned long flags;
 	struct rcu_data *rdp;
@@ -2574,9 +2575,9 @@ __call_rcu(struct rcu_head *head, rcu_callback_t func, bool lazy)
 		/*
 		 * Probable double call_rcu(), so leak the callback.
 		 * Use rcu:rcu_callback trace event to find the previous
-		 * time callback was passed to __call_rcu().
+		 * time callback was passed to __call_rcu_common().
 		 */
-		WARN_ONCE(1, "__call_rcu(): Double-freed CB %p->%pS()!!!\n",
+		WARN_ONCE(1, "__call_rcu_common(): Double-freed CB %p->%pS()!!!\n",
 			  head, head->func);
 		WRITE_ONCE(head->func, rcu_leak_callback);
 		return;
@@ -2596,10 +2597,10 @@ __call_rcu(struct rcu_head *head, rcu_callback_t func, bool lazy)
 		if (rcu_segcblist_empty(&rdp->cblist))
 			rcu_segcblist_init(&rdp->cblist);
 	}
-	if (rcu_nocb_try_bypass(rdp, head, &was_alldone, flags))
+	if (rcu_nocb_try_bypass(rdp, head, &was_alldone, flags, lazy))
 		return; // Enqueued onto ->nocb_bypass, so just leave.
 	/* If we get here, rcu_nocb_try_bypass() acquired ->nocb_lock. */
-	rcu_segcblist_enqueue(&rdp->cblist, head, lazy);
+	rcu_segcblist_enqueue(&rdp->cblist, head, kfree_lazy);
 	if (__is_kfree_rcu_offset((unsigned long)func))
 		trace_rcu_kfree_callback(rcu_state.name, head,
 					 (unsigned long)func,
@@ -2620,8 +2621,40 @@ __call_rcu(struct rcu_head *head, rcu_callback_t func, bool lazy)
 	}
 }
 
+#ifdef CONFIG_RCU_LAZY
+/**
+ * call_rcu_hurry() - Queue RCU callback for invocation after grace period, and
+ * flush all lazy callbacks (including the new one) to the main ->cblist while
+ * doing so.
+ *
+ * @head: structure to be used for queueing the RCU updates.
+ * @func: actual callback function to be invoked after the grace period
+ *
+ * The callback function will be invoked some time after a full grace
+ * period elapses, in other words after all pre-existing RCU read-side
+ * critical sections have completed.
+ *
+ * Use this API instead of call_rcu() if you don't want the callback to be
+ * invoked after very long periods of time, which can happen on systems without
+ * memory pressure and on systems which are lightly loaded or mostly idle.
+ * This function will cause callbacks to be invoked sooner than later at the
+ * expense of extra power. Other than that, this function is identical to, and
+ * reuses call_rcu()'s logic. Refer to call_rcu() for more details about memory
+ * ordering and other functionality.
+ */
+void call_rcu_hurry(struct rcu_head *head, rcu_callback_t func)
+{
+	__call_rcu_common(head, func, false, false);
+}
+EXPORT_SYMBOL_GPL(call_rcu_hurry);
+#endif
+
 /**
  * call_rcu() - Queue an RCU callback for invocation after a grace period.
+ * By default the callbacks are 'lazy' and are kept hidden from the main
+ * ->cblist to prevent starting of grace periods too soon.
+ * If you desire grace periods to start very soon, use call_rcu_hurry().
+ *
  * @head: structure to be used for queueing the RCU updates.
  * @func: actual callback function to be invoked after the grace period
  *
@@ -2657,7 +2690,7 @@ __call_rcu(struct rcu_head *head, rcu_callback_t func, bool lazy)
  */
 void call_rcu(struct rcu_head *head, rcu_callback_t func)
 {
-	__call_rcu(head, func, 0);
+	__call_rcu_common(head, func, false, IS_ENABLED(CONFIG_RCU_LAZY));
 }
 EXPORT_SYMBOL_GPL(call_rcu);
 
@@ -2670,7 +2703,7 @@ EXPORT_SYMBOL_GPL(call_rcu);
  */
 void kfree_call_rcu(struct rcu_head *head, rcu_callback_t func)
 {
-	__call_rcu(head, func, 1);
+	__call_rcu_common(head, func, true, IS_ENABLED(CONFIG_RCU_LAZY));
 }
 EXPORT_SYMBOL_GPL(kfree_call_rcu);
 
@@ -2743,7 +2776,7 @@ void synchronize_rcu(void)
 	if (rcu_gp_is_expedited())
 		synchronize_rcu_expedited();
 	else
-		wait_rcu_gp(call_rcu);
+		wait_rcu_gp(call_rcu_hurry);
 }
 EXPORT_SYMBOL_GPL(synchronize_rcu);
 
@@ -2882,7 +2915,7 @@ static void rcu_barrier_func(void *unused)
 	 */
 	was_alldone = rcu_segcblist_is_offloaded(&rdp->cblist) &&
 		      !rcu_segcblist_pend_cbs(&rdp->cblist);
-	WARN_ON_ONCE(!rcu_nocb_flush_bypass(rdp, NULL, jiffies));
+	WARN_ON_ONCE(!rcu_nocb_flush_bypass(rdp, NULL, jiffies, false));
 	wake_nocb = was_alldone && rcu_segcblist_pend_cbs(&rdp->cblist);
 	if (rcu_segcblist_entrain(&rdp->cblist, &rdp->barrier_head, 0)) {
 		atomic_inc(&rcu_state.barrier_cpu_count);
@@ -3240,7 +3273,7 @@ void rcutree_migrate_callbacks(int cpu)
 	my_rdp = this_cpu_ptr(&rcu_data);
 	my_rnp = my_rdp->mynode;
 	rcu_nocb_lock(my_rdp); /* irqs already disabled. */
-	WARN_ON_ONCE(!rcu_nocb_flush_bypass(my_rdp, NULL, jiffies));
+	WARN_ON_ONCE(!rcu_nocb_flush_bypass(my_rdp, NULL, jiffies, false));
 	raw_spin_lock_rcu_node(my_rnp); /* irqs already disabled. */
 	/* Leverage recent GPs and set GP for new callbacks. */
 	needwake = rcu_advance_cbs(my_rnp, rdp) ||
